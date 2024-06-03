@@ -33,7 +33,7 @@ def get_top_k_recommendations(data: pd.DataFrame, k: int) -> pd.Series:
                                 .apply(lambda x: x.head(k).tolist())
     return top_k_recommendations
 
-def get_actual_items(data: pd.DataFrame, threshold: int = 4) -> pd.Series:
+def get_actual_items(data: pd.DataFrame, threshold: int) -> pd.Series:
     """Get items that have been rated equal to or above a certain threshold."""
     relevant_items = data[data['rating'] >= threshold] \
                      .groupby('user_id')['book_id'] \
