@@ -1,14 +1,9 @@
+matplotlib==3.8.3
+networkx==3.2.1
+numpy==1.26.4
+pandas==2.2.2
+scikit_learn==1.4.1.post1
+scipy==1.13.1
 torch==2.2.1
-numpy
-pandas
-matplotlib
-seaborn
-scikit-learn
-scikit-surprise
-pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.2.0+cu121.html
-git+https://github.com/pyg-team/pytorch_geometric.git
-torchmetrics
-sentence_transformers
-torch_geometric
-
-# Optional dependencies:
+torch_geometric==2.5.3
+torchmetrics==1.3.1
