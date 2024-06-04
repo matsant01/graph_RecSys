@@ -62,8 +62,8 @@ def factorize_matrix_SGD(
         errors = ratings - predictions
 
         for idx in range(batch_size):
-            u = users[idx]
-            b = books[idx]
+            u = users[idx].astype(int)
+            b = books[idx].astype(int)
             W_grad = errors[idx] * Z[b, :] - lambda_reg * W[u, :]
             Z_grad = errors[idx] * W[u, :] - lambda_reg * Z[b, :]
             W[u, :] += learning_rate * W_grad
@@ -91,8 +91,8 @@ def compute_predictions(
         pd.DataFrame: Updated DataFrame including a new column with predicted ratings.
     """
 
-    users = data["user_id"].values - 1
-    books = data["book_id"].values - 1
+    users = (data["user_id"].values - 1).astype(int)
+    books = (data["book_id"].values - 1).astype(int)
 
     predictions = np.sum(W[users, :] * Z[books, :], axis=1)
 
