@@ -1,117 +1,79 @@
 import numpy as np
 import pandas as pd
+from tqdm import tqdm as tp
 
 
 class MatrixFactorization:
-    def __init__(self, num_factors: int = 5, batch_size: int = 1024, learning_rate: float = 0.01, lambda_reg: float = 0.01):
+    def __init__(self, num_factors: int = 5, num_epochs: int = 1, batch_size: int = 1024, learning_rate: float = 0.01, lambda_reg: float = 0.01, log_every: int = 10000):
         self.num_factors = num_factors
+        self.num_epochs = num_epochs
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.lambda_reg = lambda_reg
+        self.log_every = log_every
 
-    def fit(self, data: pd.DataFrame):
-        self.W, self.Z, self.num_users, self.num_books = self.initialize_data(data, self.num_factors)
-        self.W, self.Z = self.factorize_matrix_SGD(data, self.W, self.Z, num_iterations=self.num_iterations, batch_size=self.batch_size, learning_rate=self.learning_rate, lambda_reg=self.lambda_reg)
+    def train(self, full_data, train_dta):
+        self.initialize_weights(full_data)
+        self.factorize_matrix_SGD(train_dta)
         return self
 
-    def predict(self, data: pd.DataFrame):
-        return self.compute_predictions(data, self.W, self.Z)
+    def predict(self, user_id, book_id) -> pd.DataFrame:
+        """Make prediction for every pair of user and book id"""
+        predictions = np.sum(self.user_factors_[user_id, :] * self.book_factors_[book_id, :], axis=1)
+        return predictions
 
     def evaluate(self, data: pd.DataFrame):
-        predictions = self.predict(data)
+        predictions = self.predict(data["user_id"], data["book_id"])
         mse = self.calculate_mse(data["rating"], predictions)
         return mse
 
-    def initialize_data(self, data:pd.DataFrame, num_factors: int = 5):
-        """
-        Loads the dataset from a CSV file and initializes user and book factor matrices.
-
-        Args:
-            filepath (str): Path to the CSV file containing the data.
-            num_factors (int): Number of latent factors to use in the matrices.
-
-        Returns:
-            tuple: A tuple containing the dataset (DataFrame), user factors matrix (W),
-                book factors matrix (Z), number of users, and number of books.
-        """
+    def initialize_weights(self, full_data:pd.DataFrame):
         
-        num_users = len(data["user_id"].unique())
-        num_books = len(data["book_id"].unique())
+        # matrix needs to be created on the full data otherwise indices won't match on the training set
+        self.num_users = len(full_data["user_id"].unique())
+        self.num_books = len(full_data["book_id"].unique())
 
-        W = np.random.normal(scale=1.0 / num_factors, size=(num_users, num_factors))
-        Z = np.random.normal(scale=1.0 / num_factors, size=(num_books, num_factors))
-
-        return W, Z, num_users, num_books
-
-    def factorize_matrix_SGD(self): 
+        # Initialize user and book factors
+        self.user_factors_ = np.random.rand(self.num_users, self.num_factors)
+        self.book_factors_ = np.random.rand(self.num_books, self.num_factors)
 
 
-    def factorize_matrix_SGD(
-        self,
-    ):
-        """
-        Performs stochastic gradient descent to optimize the factor matrices W and Z.
-
-        Args:
-            data (pd.DataFrame): Dataset containing user IDs, book IDs, and ratings.
-            W (np.ndarray): User factors matrix.
-            Z (np.ndarray): Book factors matrix.
-            num_iterations (int): Number of iterations to run SGD.
-            batch_size (int): Number of samples in each batch.
-            learning_rate (float): Learning rate for updates.
-
-        Returns:
-            tuple: Updated user factors matrix (W) and book factors matrix (Z).
-        """
+    def factorize_matrix_SGD(self, data):
 
         cumulative_loss = []
-        for iteration in range(num_iterations):
-            batch = data.sample(n=batch_size, replace=True)
+        for epoch in range(self.num_epochs):
+            # Shuffle the data for each epoch
+            data = data.sample(frac=1)
+            done_batches  = 0 
 
-            users = batch["user_id"].values - 1
-            books = batch["book_id"].values - 1
-            ratings = batch["rating"].values
+            # Iterate over data in batches
+            for i in tp(range(0, len(data), self.batch_size)):  # TODO: replace with proper data loader? 
+                batch = data[i:i + self.batch_size]
 
-            predictions = self.compute_predictions(batch, W, Z)
-            errors = ratings - predictions
+                # get index of users and books in the batch and labels
+                users = batch["user_id"].values 
+                books = batch["book_id"].values 
+                labels = batch["rating"].values
 
-            for idx in range(batch_size):
-                u = users[idx].astype(int)
-                b = books[idx].astype(int)
-                W_grad = errors[idx] * Z[b, :] - lambda_reg * W[u, :]
-                Z_grad = errors[idx] * W[u, :] - lambda_reg * Z[b, :]
-                W[u, :] += learning_rate * W_grad
-                Z[b, :] += learning_rate * Z_grad
+                predictions = self.predict(users, books)
+                errors = labels - predictions
 
-            cumulative_loss.append(np.mean(errors**2))
-            if iteration % log_every == 0:
-                print(f"Iteration: {iteration}, MSE: {np.mean(cumulative_loss)}")
+                # Update factors based on the batch errors
+                for idx in range(len(batch)):
+                    u = users[idx]
+                    b = books[idx]
+                    W_grad = -errors[idx] * self.book_factors_[b, :] + self.lambda_reg * self.user_factors_[u, :]
+                    Z_grad = -errors[idx] * self.user_factors_[u, :] + self.lambda_reg * self.book_factors_[b, :]
+                    self.user_factors_[u, :] -= self.learning_rate * W_grad
+                    self.book_factors_[b, :] -= self.learning_rate * Z_grad
 
-        return W, Z
+                # logging
+                # cumulative_loss.append(self.calculate_mse(labels, predictions))
 
+                # if done_batches % self.log_every == 0:
+                #     print(f"Epoch: {epoch}, MSE: {np.mean(cumulative_loss)}")
+                #     cumulative_loss = []
 
-    def compute_predictions(
-        self,
-        data: pd.DataFrame, W: np.ndarray, Z: np.ndarray
-    ) -> pd.DataFrame:
-        """
-        Computes the predicted ratings for each user and book pair in the data.
-
-        Args:
-            data (pd.DataFrame): Dataset containing user IDs and book IDs for which we want to predict ratings.
-            W (np.ndarray): User factors matrix.
-            Z (np.ndarray): Book factors matrix.
-
-        Returns:
-            pd.DataFrame: Updated DataFrame including a new column with predicted ratings.
-        """
-
-        users = (data["user_id"].values - 1).astype(int)
-        books = (data["book_id"].values - 1).astype(int)
-
-        predictions = np.sum(W[users, :] * Z[books, :], axis=1)
-
-        return predictions
 
 
     def calculate_mse(self, labels, predictions) -> float:
@@ -128,10 +90,13 @@ class MatrixFactorization:
         return mse
 
 
+
 if __name__ == "__main__":
-    filepath = "data/ratings.csv"
-    data, W, Z, num_users, num_books = initialize_data(filepath)
-    W, Z = factorize_matrix_SGD(data, W, Z, num_iterations=10000, batch_size=1024)
-    predictions = compute_predictions(data, W, Z)
-    mse = calculate_mse(data["rating"], predictions)
-    print(f"Mean Squared Error: {mse}")
+    full_datadata = pd.read_csv("data/ratings.csv")
+    train_data = pd.read_csv("data/splitted_data/train.csv")
+    test_data = pd.read_csv("data/splitted_data/test.csv")
+    mf = MatrixFactorization()
+    mf.train(full_datadata, train_data)
+    mse = mf.evaluate(test_data)
+
+    

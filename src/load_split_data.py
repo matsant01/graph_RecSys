@@ -175,7 +175,7 @@ if __name__ == "__main__":
     ratings_path = 'data/ratings.csv'
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    loader = LoadData(book_path, ratings_path, device, sample_size=0.01)
+    loader = LoadData(book_path, ratings_path, device)
     books_features = loader.compute_books_embeddings(loader.df_books)
     users_features = loader.compute_user_embeddings(loader.df_ratings)
     data = loader.create_hetero_graph(books_features, users_features)
