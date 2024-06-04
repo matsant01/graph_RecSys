@@ -146,7 +146,6 @@ class LoadData:
                             add_negative_train_samples=False,
                             edge_types=[('user', 'rates', 'book')],
                             rev_edge_types=[('book', 'rev_rates', 'user')],
-                            random_state=42,
                             )
 
         train_data, val_data, test_data = tfs(data)
@@ -176,7 +175,7 @@ if __name__ == "__main__":
     ratings_path = 'data/ratings.csv'
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    loader = LoadData(book_path, ratings_path, device, )
+    loader = LoadData(book_path, ratings_path, device, sample_size=0.01)
     books_features = loader.compute_books_embeddings(loader.df_books)
     users_features = loader.compute_user_embeddings(loader.df_ratings)
     data = loader.create_hetero_graph(books_features, users_features)
@@ -184,6 +183,7 @@ if __name__ == "__main__":
     train_data, val_data, test_data = loader.split_hetero(data) 
 
     # saving both as torch and csv
+    loader.save_hetero(data, 'data/splitted_data/data_hetero.pt')
     loader.save_hetero(train_data, 'data/splitted_data/train_hetero.pt')
     loader.save_hetero(val_data, 'data/splitted_data/val_hetero.pt')
     loader.save_hetero(test_data, 'data/splitted_data/test_hetero.pt')
