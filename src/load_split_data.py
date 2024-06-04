@@ -109,7 +109,7 @@ class LoadData:
         # following the PyTorch Geometric semantics:
         edge_index = torch.stack([
             torch.tensor(ratings_book_merged['mapped_user_id'].values), 
-            torch.tensor(ratings_book_merged['mapped_user_id'].values)]
+            torch.tensor(ratings_book_merged['mapped_book_id'].values)]
             , dim=0)
     
         data = HeteroData()
