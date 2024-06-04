@@ -12,18 +12,21 @@ class MatrixFactorization:
         self.lambda_reg = lambda_reg
         self.log_every = log_every
 
-    def train(self, full_data, train_dta):
+    def train(self, full_data, train_data):
         self.initialize_weights(full_data)
-        self.factorize_matrix_SGD(train_dta)
+        self.factorize_matrix_SGD(train_data)
         return self
 
-    def predict(self, user_id, book_id) -> pd.DataFrame:
+    def predict(self, user_book_pairs) -> pd.DataFrame:
         """Make prediction for every pair of user and book id"""
+        user_id = user_book_pairs["user_id"].values
+        book_id = user_book_pairs["book_id"].values
+
         predictions = np.sum(self.user_factors_[user_id, :] * self.book_factors_[book_id, :], axis=1)
         return predictions
 
     def evaluate(self, data: pd.DataFrame):
-        predictions = self.predict(data["user_id"], data["book_id"])
+        predictions = self.predict(data)
         mse = self.calculate_mse(data["rating"], predictions)
         return mse
 
@@ -55,7 +58,7 @@ class MatrixFactorization:
                 books = batch["book_id"].values 
                 labels = batch["rating"].values
 
-                predictions = self.predict(users, books)
+                predictions = self.predict(batch)
                 errors = labels - predictions
 
                 # Update factors based on the batch errors
@@ -99,4 +102,3 @@ if __name__ == "__main__":
     mf.train(full_datadata, train_data)
     mse = mf.evaluate(test_data)
 
-    
