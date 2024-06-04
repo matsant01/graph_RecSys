@@ -1,0 +1,6 @@
+data/splitted_data/test.csv filter=lfs diff=lfs merge=lfs -text
+data/splitted_data/test_hetero.pt filter=lfs diff=lfs merge=lfs -text
+data/splitted_data/train.csv filter=lfs diff=lfs merge=lfs -text
+data/splitted_data/train_hetero.pt filter=lfs diff=lfs merge=lfs -text
+data/splitted_data/val.csv filter=lfs diff=lfs merge=lfs -text
+data/splitted_data/val_hetero.pt filter=lfs diff=lfs merge=lfs -text

@@ -146,6 +146,7 @@ class LoadData:
                             add_negative_train_samples=False,
                             edge_types=[('user', 'rates', 'book')],
                             rev_edge_types=[('book', 'rev_rates', 'user')],
+                            random_state=42,
                             )
 
         train_data, val_data, test_data = tfs(data)
