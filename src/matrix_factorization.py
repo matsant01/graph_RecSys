@@ -12,7 +12,7 @@ class MatrixFactorization:
         self.lambda_reg = lambda_reg
         self.log_every = log_every
 
-    def train(self, full_data, train_data):
+    def train_loop(self, full_data, train_data):
         self.initialize_weights(full_data)
         self.factorize_matrix_SGD(train_data)
         return self
@@ -99,6 +99,6 @@ if __name__ == "__main__":
     train_data = pd.read_csv("data/splitted_data/train.csv")
     test_data = pd.read_csv("data/splitted_data/test.csv")
     mf = MatrixFactorization()
-    mf.train(full_datadata, train_data)
+    mf.train_loop(full_datadata, train_data)
     mse = mf.evaluate(test_data)
 

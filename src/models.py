@@ -161,7 +161,7 @@ class GNN(torch.nn.Module):
             torch.manual_seed(seed + epoch) # Ensure reproducibility, but with different seeds for each epoch
             for i, batch in tqdm(enumerate(train_loader), desc=f"Training Epoch {epoch + 1}/{num_epochs}", total=len(train_loader)):
                 optimizer.zero_grad()
-                batch  = batch.to(device)
+                batch = batch.to(device)
                 
                 # Forward pass
                 preds = self.forward(batch)
