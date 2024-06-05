@@ -1,12 +1,17 @@
 import os
-import torch
-import argparse
-from torch.utils.data import DataLoader, TensorDataset
-from torch_geometric.loader import LinkNeighborLoader, HGTLoader
-from src.evaluation_metrics import * 
-import numpy as np
-from src.models import GNN
+import sys
 import json
+import argparse
+import numpy as np
+
+import torch
+from torch_geometric.loader import LinkNeighborLoader, HGTLoader
+
+sys.path.append("./.")
+
+from src.models import GNN
+from src.evaluation_metrics import * 
+
 
 def load_model(model_folder, full_data, config):
     # creating architecutre with the same config
@@ -47,24 +52,24 @@ def load_data(test_data,  config):
 
 
 def compute_save_metrics(test_data, predictions, model_folder):
-    k = 5  # TODO: we always evaluate on top 5 recommendations, migth be useful to experiment with this
-    test_data['predicted_rating'] = predictions
-    top_k_recommendations = get_top_k_recommendations(test_data, k)
+    for k in [5, 10, 25]:
+        test_data['predicted_rating'] = predictions
+        top_k_recommendations = get_top_k_recommendations(test_data, k)
 
-    # only consider item rated 4 or 5 as relevant
-    actual_items = get_actual_items(test_data, 4) # ground truth
+        # only consider item rated 4 or 5 as relevant
+        actual_items = get_actual_items(test_data, 4) # ground truth
 
-    # Evaluate the recommendations
-    mean_precision, mean_recall, mean_f1 = evaluate_recommendations(top_k_recommendations, actual_items, k)
-    print(f"Mean Precision@{k}: {mean_precision}")
-    print(f"Mean Recall@{k}: {mean_recall}")
-    print(f"Mean F1 Score@{k}: {mean_f1}")
+        # Evaluate the recommendations
+        mean_precision, mean_recall, mean_f1 = evaluate_recommendations(top_k_recommendations, actual_items, k)
+        print(f"Mean Precision@{k}: {mean_precision}")
+        print(f"Mean Recall@{k}: {mean_recall}")
+        print(f"Mean F1 Score@{k}: {mean_f1}")
 
-    metrics = {
-        f"Mean Precision@{k}": mean_precision,
-        f"Mean Recall@{k}": mean_recall,
-        f"Mean F1 Score@{k}": mean_f1
-    }
+        metrics = {
+            f"Mean Precision@{k}": mean_precision,
+            f"Mean Recall@{k}": mean_recall,
+            f"Mean F1 Score@{k}": mean_f1
+        }
 
     with open(os.path.join(model_folder, 'metrics.json'), 'w') as f:
         json.dump(metrics, f, indent=4)

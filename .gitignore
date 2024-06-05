@@ -5,3 +5,4 @@ __pycache__/*
 */__pycache__/*
 output/*
 .vscode/launch.json
+src/__pycache__/*
