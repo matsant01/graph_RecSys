@@ -15,34 +15,34 @@ python scripts/trainer.py \
     --num_conv_layers 2 \
     --hidden_channels 64 \
     --num_decoder_layers 0 \
-    --num_epochs 10 \
+    --num_epochs 1 \
     --lr 0.005 \
     --sampler_type link-neighbor \
-    --device cuda:1 \
+    --device mps \
     --verbose
 
-python scripts/trainer.py \
-    --data_path ./data/splitted_data \
-    --output_dir ./output \
-    --model_type GNN \
-    --num_conv_layers 4 \
-    --hidden_channels 64 \
-    --num_decoder_layers 4 \
-    --num_epochs 10 \
-    --lr 0.005 \
-    --sampler_type link-neighbor \
-    --device cuda:1 \
-    --verbose
+# python scripts/trainer.py \
+#     --data_path ./data/splitted_data \
+#     --output_dir ./output \
+#     --model_type GNN \
+#     --num_conv_layers 4 \
+#     --hidden_channels 64 \
+#     --num_decoder_layers 4 \
+#     --num_epochs 10 \
+#     --lr 0.005 \
+#     --sampler_type link-neighbor \
+#     --device cuda:1 \
+#     --verbose
 
-python scripts/trainer.py \
-    --data_path ./data/splitted_data \
-    --output_dir ./output \
-    --model_type GNN \
-    --num_conv_layers 4 \
-    --hidden_channels 128 \
-    --num_decoder_layers 4 \
-    --num_epochs 10 \
-    --lr 0.005 \
-    --sampler_type link-neighbor \
-    --device cuda:1 \
-    --verbose
+# python scripts/trainer.py \
+#     --data_path ./data/splitted_data \
+#     --output_dir ./output \
+#     --model_type GNN \
+#     --num_conv_layers 4 \
+#     --hidden_channels 128 \
+#     --num_decoder_layers 4 \
+#     --num_epochs 10 \
+#     --lr 0.005 \
+#     --sampler_type link-neighbor \
+#     --device cuda:1 \
+#     --verbose
