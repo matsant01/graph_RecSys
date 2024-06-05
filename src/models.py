@@ -23,8 +23,8 @@ class SAGEConvEncoder(torch.nn.Module):
         super().__init__()
         self.convs = torch.nn.ModuleList()
         for _ in range(num_layers - 1):
-            self.convs.append(SAGEConv(hidden_channels, hidden_channels))
-        self.convs.append(SAGEConv(hidden_channels, out_channels))
+            self.convs.append(SAGEConv((-1, -1), hidden_channels))
+        self.convs.append(SAGEConv((-1, -1), out_channels))
 
     def forward(self, x_dict, edge_index):
         """
@@ -34,9 +34,11 @@ class SAGEConvEncoder(torch.nn.Module):
         """
         # Takes the edge_index (not the edge_label_index) as input, and performs
         # message passing on the graph.
-        for conv in self.convs:
-            x_dict = conv(x_dict, edge_index)
-            x_dict = torch.nn.functional.relu(x_dict)
+        for i, conv in enumerate(self.convs):
+            if i != len(self.convs) - 1:
+                x_dict = conv(x_dict, edge_index).relu()
+            else:
+                x_dict = conv(x_dict, edge_index)
         return x_dict
 
 class EdgeDecoder(torch.nn.Module):
@@ -72,9 +74,11 @@ class EdgeDecoder(torch.nn.Module):
             return (z_dict['user'][row] * z_dict['book'][col]).sum(dim=-1)
         else:
             z = torch.cat([z_dict['user'][row], z_dict['book'][col]], dim=-1)
-            for lin in self.lins:
-                z = lin(z)
-                z = torch.nn.functional.relu(z)
+            for i, lin in enumerate(self.lins):
+                if i != len(self.lins) - 1:
+                    z = lin(z).relu()
+                else:
+                    z = lin(z).view(-1)
             return z
         
         
@@ -166,7 +170,7 @@ class GNN(torch.nn.Module):
                 # Forward pass
                 preds = self.forward(batch)
                 loss = F.mse_loss(
-                    input=preds.unsqueeze(-1),
+                    input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
                     target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
                 )
 
@@ -199,7 +203,7 @@ class GNN(torch.nn.Module):
                     batch = batch.to(device)
                     preds = self.forward(batch)
                     loss = F.mse_loss(
-                        input=preds.unsqueeze(-1),
+                        input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
                         target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
                     )
                     total_val_loss += float(loss) * preds.numel()
