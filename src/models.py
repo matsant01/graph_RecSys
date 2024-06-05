@@ -135,6 +135,33 @@ class GNN(torch.nn.Module):
         # Compute the edge scores over the edge_label_index (to be compared with the edge_label)
         return self.decoder(x_dict, data["user", "rates", "book"].edge_label_index)
     
+    def evaluation(self, val_loader, device): 
+
+        self.eval()
+        with torch.no_grad():
+            total_val_loss = 0
+            total_val_examples = 0
+            predictions = []
+            labels = []
+            for i, batch in tqdm(enumerate(val_loader), desc=f"Validation", total=len(val_loader)):
+                batch = batch.to(device)
+                preds = self.forward(batch)
+                
+                predictions.append(preds)
+                labels.append(batch["user", "rates", "book"].edge_label.to(torch.float32))
+
+                loss = F.mse_loss(
+                    input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
+                    target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
+                )
+                total_val_loss += float(loss) * preds.numel()
+                total_val_examples += preds.numel()
+                
+            avg_val_loss = total_val_loss / total_val_examples
+
+        return avg_val_loss, predictions
+
+    
     
     def train_loop(
         self,
@@ -195,28 +222,16 @@ class GNN(torch.nn.Module):
             print(f"\nEpoch {epoch + 1}/{num_epochs} - Average Train Loss: {avg_loss}")
             
             ######################## Validate the model ########################
-            self.eval()
-            with torch.no_grad():
-                total_val_loss = 0
-                total_val_examples = 0
-                for i, batch in tqdm(enumerate(val_loader), desc=f"Validation", total=len(val_loader)):
-                    batch = batch.to(device)
-                    preds = self.forward(batch)
-                    loss = F.mse_loss(
-                        input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
-                        target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
-                    )
-                    total_val_loss += float(loss) * preds.numel()
-                    total_val_examples += preds.numel()
-                    
-                avg_val_loss = total_val_loss / total_val_examples
-                print(f"Epoch {epoch + 1}/{num_epochs} - Average Validation Loss: {avg_val_loss}")
-                
-                if writer is not None:
-                    writer.add_scalar(
-                        tag="val/loss",
-                        scalar_value=avg_val_loss,
-                        global_step=epoch
-                    )
+
+            avg_val_loss, _, _  = self.evaluation(val_loader, writer, device)
+            print(f"Epoch {epoch + 1}/{num_epochs} - Average Validation Loss: {avg_val_loss}")
+            
+            if writer is not None:
+                writer.add_scalar(
+                    tag="val/loss",
+                    scalar_value=avg_val_loss,
+                    global_step=epoch
+                )
+
             self.train()
         

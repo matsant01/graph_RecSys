@@ -124,7 +124,7 @@ def main(**kwargs):
         val_loader =  LinkNeighborLoader(
             data=val_data,
             num_neighbors=[25, 25],
-            neg_sampling_ratio=2,
+            neg_sampling_ratio=2,  # FIXME: why negative sampling? 
             edge_label_index=(("user", "rates", "book"), val_data["user", "rates", "book"].edge_label_index),
             edge_label=val_data["user", "rates", "book"].edge_label,
             batch_size=4096,

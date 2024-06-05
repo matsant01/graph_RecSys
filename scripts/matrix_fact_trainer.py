@@ -1,5 +1,6 @@
 import argparse
 import os
+import json
 import pandas as pd
 from datetime import datetime
 from src.evaluation_metrics import *
@@ -21,8 +22,13 @@ def main():
 
     # Ensure the output directory exists
     root_output_dir = args.output_dir
-    output_dir = os.path.join(root_output_dir, f"matrixFact_lr={args.learning_rate}_reg={args.lambda_reg}_epochs={args.num_epochs}_factors={args.num_factors}_{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+    output_dir = os.path.join(root_output_dir, f"matrixFact_{datetime.now().strftime('%Y%m%d-%H%M%S')}")
     os.makedirs(output_dir, exist_ok=True)
+
+    config = vars(args)
+    config_path = os.path.join(output_dir, "config.json")
+    with open(config_path, "w") as f:
+        json.dump(config, f)
 
     # Load the data
     train_data = pd.read_csv(os.path.join(args.data_path, 'train.csv'))
@@ -57,11 +63,15 @@ def main():
     print(f"Mean Recall@{k}: {mean_recall}")
     print(f"Mean F1 Score@{k}: {mean_f1}")
 
-    # save metrics to file
-    with open(os.path.join(output_dir, 'metrics.txt'), 'w') as f:
-        f.write(f"Mean Precision@{k}: {mean_precision}\n")
-        f.write(f"Mean Recall@{k}: {mean_recall}\n")
-        f.write(f"Mean F1 Score@{k}: {mean_f1}\n")
+    # save metrics to file    
+    metrics = {
+        f"Mean Precision@{k}": mean_precision,
+        f"Mean Recall@{k}": mean_recall,
+        f"Mean F1 Score@{k}": mean_f1
+    }
+
+    with open(os.path.join(output_dir, 'metrics.json'), 'w') as f:
+        json.dump(metrics, f, indent=4)
 
 if __name__ == '__main__':
     main()
