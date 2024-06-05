@@ -9,6 +9,7 @@ from src.models import GNN
 import json
 
 def load_model(model_folder, full_data, config):
+    # creating architecutre with the same config
     model = GNN(data=full_data,
                 conv_hidden_channels=config['hidden_channels'],
                 lin_hidden_channels=config['hidden_channels'],
@@ -21,6 +22,7 @@ def load_model(model_folder, full_data, config):
     return model
 
 def load_data(test_data,  config):
+    # using same loader as during training
     if config['sampler_type'] == "link-neighbor":
         test_loader =  LinkNeighborLoader(
             data=test_data,
@@ -44,10 +46,12 @@ def load_data(test_data,  config):
     return test_loader
 
 
-def compute_metrics(test_data, predictions, model_folder):
-    k = 5
+def compute_save_metrics(test_data, predictions, model_folder):
+    k = 5  # TODO: we always evaluate on top 5 recommendations, migth be useful to experiment with this
     test_data['predicted_rating'] = predictions
     top_k_recommendations = get_top_k_recommendations(test_data, k)
+
+    # only consider item rated 4 or 5 as relevant
     actual_items = get_actual_items(test_data, 4) # ground truth
 
     # Evaluate the recommendations
@@ -75,8 +79,11 @@ def main(args, device):
     test_data_csv = pd.read_csv(os.path.join(data_folder, "test.csv"))
     full_data = torch.load(os.path.join(data_folder, "data_hetero.pt")).to(device)
 
+    # iterate over all the model folders
     for model_folder in os.listdir(models_folder):
         model_folder = os.path.join(models_folder, model_folder)
+
+        # only consider folders with model.pt file
         if not os.path.isdir(model_folder):
             continue
         if not os.path.exists(os.path.join(model_folder, 'model.pt')):
@@ -89,8 +96,7 @@ def main(args, device):
         avg_loss, predictions = model.evaluation(test_loader, device)
 
         predictions = torch.cat(predictions, dim=0).cpu().numpy()
-        # labels = torch.cat(labels, dim=0).cpu().numpy()
-        compute_metrics(test_data_csv, predictions, model_folder)
+        compute_save_metrics(test_data_csv, predictions, model_folder)
 
     
 
@@ -109,4 +115,5 @@ if __name__ == "__main__":
     
     main(args, device)
 
+    # Run the script
     # python scripts/evaluator.py --model_folder output --data_folder data/splitted_data
