@@ -107,7 +107,7 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
 
-    # get device
+    # get device (evaluation isn't supported on mps)
     if torch.cuda.is_available():
         device = 'cuda'
     else:
