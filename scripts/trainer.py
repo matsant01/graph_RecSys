@@ -30,11 +30,15 @@ def validate_arguments():
     parser.add_argument('--model_type', type=str, help='Type of model to train. Either "GNN" or "MatrixFactorization"')
     parser.add_argument('--num_conv_layers', type=int, help='Number of SAGE convolutional layers')
     parser.add_argument('--hidden_channels', type=int, help='Number of hidden channels in the SAGE convolutional layers')
+    parser.add_argument('--use_embedding_layers', action='store_true', help='Whether to use embedding layers or not')
     parser.add_argument('--num_decoder_layers', type=int, help='Number of decoder layers, if 0 the decoding will be done by a dot product')
     parser.add_argument('--num_epochs', type=int, help='Number of epochs to train the model')
     parser.add_argument('--lr', type=float, help='Learning rate for the optimizer', default=0.01)
     parser.add_argument('--sampler_type', type=str, help='Type of sampler to use to create batches. Either "link-neighbor" (LinkNeighborLoader) or "HGT" (HGTLoader)')
     parser.add_argument('--device', type=str, help='Device to use for training.')
+    parser.add_argument('--do_neg_sampling', action='store_true', help='Whether to do negative sampling or not')
+    parser.add_argument('--num_neighbors_in_sampling', type=int, help='Number of neighbors to sample in the sampling process, if applicable. Default is 25', default=25)
+    parser.add_argument('--batch_size', type=int, help='Batch size to use for training. Default is 1024', default=1024)
     parser.add_argument('--verbose', action='store_true', help='Print progress messages')
     
     args = parser.parse_args()
@@ -75,7 +79,8 @@ def get_model(data: HeteroData, **kwargs):
             conv_hidden_channels=kwargs['hidden_channels'],
             lin_hidden_channels=kwargs['hidden_channels'],
             num_conv_layers=kwargs['num_conv_layers'],
-            num_decoder_layers=kwargs['num_decoder_layers']
+            num_decoder_layers=kwargs['num_decoder_layers'],
+            use_embedding_layers=kwargs['use_embedding_layers'],
         )
     elif kwargs['model_type'] == "MatrixFactorization":
         NotImplementedError("Matrix Factorization model is not implemented yet")
@@ -112,22 +117,23 @@ def main(**kwargs):
     
     # Create Loaders
     if kwargs['sampler_type'] == "link-neighbor":
+        num_neighbors = [kwargs['num_neighbors_in_sampling']] * kwargs['num_conv_layers']
         train_loader =  LinkNeighborLoader(
             data=train_data,
-            num_neighbors=[25, 25],
-            neg_sampling_ratio=2,
+            num_neighbors=num_neighbors,
+            neg_sampling_ratio=2 if kwargs["do_neg_sampling"] else None,
             edge_label_index=(("user", "rates", "book"), train_data["user", "rates", "book"].edge_label_index),
             edge_label=train_data["user", "rates", "book"].edge_label,
-            batch_size=4096,
+            batch_size=kwargs['batch_size'],
             shuffle=True,
         )
         val_loader =  LinkNeighborLoader(
             data=val_data,
-            num_neighbors=[25, 25],
-            neg_sampling_ratio=2,  # FIXME: why negative sampling? 
+            num_neighbors=num_neighbors,
+            neg_sampling_ratio=2 if kwargs["do_neg_sampling"] else None,
             edge_label_index=(("user", "rates", "book"), val_data["user", "rates", "book"].edge_label_index),
             edge_label=val_data["user", "rates", "book"].edge_label,
-            batch_size=4096,
+            batch_size=kwargs['batch_size'],
             shuffle=True,
         )
     elif kwargs['sampler_type'] == "HGT":

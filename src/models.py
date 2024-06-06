@@ -89,6 +89,7 @@ class GNN(torch.nn.Module):
         conv_hidden_channels: int,
         lin_hidden_channels: int,
         num_conv_layers: int,
+        use_embedding_layers: bool = False,
         book_channels: int = 384,
         user_channels: int = 3,
         num_decoder_layers: int = 1,
@@ -106,8 +107,10 @@ class GNN(torch.nn.Module):
         super().__init__()
         
         # Define embeddings for the user and book nodes, and linear layers to transform original features
-        self.user_emb = torch.nn.Embedding(data["user"].num_nodes, conv_hidden_channels)
-        self.book_emb = torch.nn.Embedding(data["book"].num_nodes, conv_hidden_channels)
+        self.use_embedding_layers = use_embedding_layers
+        if use_embedding_layers:
+            self.user_emb = torch.nn.Embedding(data["user"].num_nodes, conv_hidden_channels)
+            self.book_emb = torch.nn.Embedding(data["book"].num_nodes, conv_hidden_channels)
         self.user_lin = torch.nn.Linear(user_channels, conv_hidden_channels)
         self.book_lin = torch.nn.Linear(book_channels, conv_hidden_channels)
         
@@ -125,8 +128,8 @@ class GNN(torch.nn.Module):
         # Create the feature matrices for the user and book nodes by combining embeddings
         # and linearly transformed features
         x_dict = {
-            "user": self.user_lin(data["user"].x) + self.user_emb(data["user"].n_id),
-            "book": self.book_lin(data["book"].x) + self.book_emb(data["book"].n_id),
+            "user": self.user_lin(data["user"].x) + self.user_emb(data["user"].n_id) if self.use_embedding_layers else self.user_lin(data["user"].x),
+            "book": self.book_lin(data["book"].x) + self.book_emb(data["book"].n_id) if self.use_embedding_layers else self.book_lin(data["book"].x),
         }
         
         # Perform message passing on the graph
