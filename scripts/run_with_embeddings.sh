@@ -34,6 +34,7 @@ for conv_layers in 2 4; do
             --batch_size 4096 \
             --device cuda:2 \
             --use_embedding_layers \
+            --num_iterations_loader 2 \
             --verbose
         done
     done

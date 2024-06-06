@@ -19,7 +19,7 @@ for conv_layers in 2 4; do
     # Number of decoder layers
     for decoder_layers in 0 2; do
         
-        for num_neighbors in 25 100; do
+        for num_neighbors in 25 100 500 1000; do
             python scripts/trainer.py \
             --data_path ./data/splitted_data \
             --output_dir ./output \
@@ -33,6 +33,7 @@ for conv_layers in 2 4; do
             --num_neighbors $num_neighbors \
             --batch_size 4096 \
             --device cuda:1 \
+            --num_iterations_loader 2 \
             --verbose
             # NOTE: NOT USING LEARNABLE EMBEDDINGS
         done
