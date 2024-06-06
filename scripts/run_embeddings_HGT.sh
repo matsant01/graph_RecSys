@@ -25,7 +25,7 @@ python scripts/trainer.py \
     --sampler_type HGT \
     --num_neighbors 1 \
     --batch_size 4096 \
-    --device cuda:2 \
+    --device cpu \
     --use_embedding_layers \
     --num_iterations_loader 2 \
     --verbose

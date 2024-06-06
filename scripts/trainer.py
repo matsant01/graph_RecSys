@@ -122,7 +122,7 @@ def main(**kwargs):
     if kwargs['sampler_type'] == "link-neighbor":
         train_loader =  LinkNeighborLoader(
             data=train_data,
-            num_neighbors=num_neighbors,
+            num_neighbors=num_neighbors, 
             neg_sampling_ratio=2 if kwargs["do_neg_sampling"] else None,
             edge_label_index=(("user", "rates", "book"), train_data["user", "rates", "book"].edge_label_index),
             edge_label=train_data["user", "rates", "book"].edge_label,
