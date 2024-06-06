@@ -117,7 +117,7 @@ def main(**kwargs):
     
     # Create Loaders
     if kwargs['sampler_type'] == "link-neighbor":
-        num_neighbors = [kwargs['num_neighbors_in_sampling']] * kwargs['num_conv_layers']
+        num_neighbors = [kwargs['num_neighbors_in_sampling']] * 2
         train_loader =  LinkNeighborLoader(
             data=train_data,
             num_neighbors=num_neighbors,
