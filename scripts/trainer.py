@@ -15,7 +15,7 @@ import torch_geometric as pyg
 import torch_geometric.transforms as T
 from torch_geometric.data import HeteroData
 
-sys.path.append("./.")
+sys.path.append("/scratch/izar/viel/graph_RecSys")
 
 from src.models import GNN
 from src.matrix_factorization import *

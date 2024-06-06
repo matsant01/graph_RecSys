@@ -7,7 +7,6 @@
 #SBATCH --gres gpu:1
 #SBATCH --account cs-552
 #SBATCH --qos cs-552
-#SBATCH --reservation cs-552 
 
 
 # New parameters to search:

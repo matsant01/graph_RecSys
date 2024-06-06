@@ -226,7 +226,7 @@ class GNN(torch.nn.Module):
             
             ######################## Validate the model ########################
 
-            avg_val_loss, _, _  = self.evaluation(val_loader, writer, device)
+            avg_val_loss, _  = self.evaluation(val_loader, device)
             print(f"Epoch {epoch + 1}/{num_epochs} - Average Validation Loss: {avg_val_loss}")
             
             if writer is not None:
