@@ -159,14 +159,14 @@ class LoadData:
         return data
 
     def convert_hetero_to_csv_save(self, data, path):
-        train_labels = data['user', 'rates', 'book'].edge_label
-        train_label_index =  data['user', 'rates', 'book'].edge_label_index
+        labels = data['user', 'rates', 'book'].edge_label
+        label_index =  data['user', 'rates', 'book'].edge_label_index
 
-        concat = torch.cat([train_label_index, train_labels.unsqueeze(0)], dim=0)
-        train_set = pd.DataFrame(concat.T.numpy(), columns=["user_id", "book_id", "rating"])
-        train_set['user_id'] = train_set['user_id'].astype(int)
-        train_set['book_id'] = train_set['book_id'].astype(int)
-        train_set.to_csv(path, index=False)
+        concat = torch.cat([label_index, labels.unsqueeze(0)], dim=0)
+        final_dataset = pd.DataFrame(concat.T.numpy(), columns=["user_id", "book_id", "rating"])
+        final_dataset['user_id'] = final_dataset['user_id'].astype(int)
+        final_dataset['book_id'] = final_dataset['book_id'].astype(int)
+        final_dataset.to_csv(path, index=False)
 
 
 

@@ -38,6 +38,7 @@ def validate_arguments():
     parser.add_argument('--device', type=str, help='Device to use for training.')
     parser.add_argument('--do_neg_sampling', action='store_true', help='Whether to do negative sampling or not')
     parser.add_argument('--num_neighbors_in_sampling', type=int, help='Number of neighbors to sample in the sampling process, if applicable. Default is 25', default=25)
+    parser.add_argument('--num_iterations_loader', type=int, help='Number of iterations to load the data', default=2)
     parser.add_argument('--batch_size', type=int, help='Batch size to use for training. Default is 1024', default=1024)
     parser.add_argument('--verbose', action='store_true', help='Print progress messages')
     
@@ -115,9 +116,10 @@ def main(**kwargs):
     val_data = torch.load(os.path.join(kwargs['data_path'], "val_hetero.pt"))
     data = torch.load(os.path.join(kwargs['data_path'], "data_hetero.pt"))
     
+    num_neighbors = [kwargs['num_neighbors_in_sampling']] * kwargs['num_iterations_loader']
+
     # Create Loaders
-    if kwargs['sampler_type'] == "link-neighbor":
-        num_neighbors = [kwargs['num_neighbors_in_sampling']] * kwargs['num_conv_layers']
+    if kwargs['sampler_type'] == "link-neighbor":    
         train_loader =  LinkNeighborLoader(
             data=train_data,
             num_neighbors=num_neighbors,
@@ -139,16 +141,14 @@ def main(**kwargs):
     elif kwargs['sampler_type'] == "HGT":
         train_loader = HGTLoader(
             train_data,
-            num_samples=[1024] * 4,  
+            num_samples=num_neighbors,  
             shuffle=True,
-            batch_size=128,
             input_nodes=("user", None),
         )
         val_loader = HGTLoader(
             val_data,
-            num_samples=[1024] * 4,
+            num_samples=num_neighbors,
             shuffle=False,
-            batch_size=128,
             input_nodes=("user", None),
         )
         

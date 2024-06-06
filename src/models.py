@@ -51,7 +51,7 @@ class EdgeDecoder(torch.nn.Module):
         :param num_layers: Number of decoder layers. If 0, the model will use a dot product to decode the embeddings.
         """
         super().__init__()
-        if num_layers > 0:
+        if num_layers > 0:  # TODO: small fix: if I ask for 1 layer I would always get 2
             self.is_dot_prod = False
             self.lins = torch.nn.ModuleList()
             self.lins.append(torch.nn.Linear(2 * input_channels, hidden_channels))
