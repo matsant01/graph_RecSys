@@ -15,7 +15,7 @@ import torch_geometric as pyg
 import torch_geometric.transforms as T
 from torch_geometric.data import HeteroData
 
-sys.path.append("/scratch/izar/viel/graph_RecSys")
+sys.path.append(".")
 
 from src.models import GNN
 from src.matrix_factorization import *
@@ -118,42 +118,7 @@ def main(**kwargs):
     val_data = torch.load(os.path.join(kwargs['data_path'], "val_hetero.pt"))
     data = torch.load(os.path.join(kwargs['data_path'], "data_hetero.pt"))
     
-    num_neighbors = [kwargs['num_neighbors_in_sampling']] * kwargs['num_iterations_loader']
-
-    # Create Loaders
-    if kwargs['sampler_type'] == "link-neighbor":
-        train_loader =  LinkNeighborLoader(
-            data=train_data,
-            num_neighbors=num_neighbors, 
-            neg_sampling_ratio=2 if kwargs["do_neg_sampling"] else None,
-            edge_label_index=(("user", "rates", "book"), train_data["user", "rates", "book"].edge_label_index),
-            edge_label=train_data["user", "rates", "book"].edge_label,
-            batch_size=kwargs['batch_size'],
-            shuffle=True,
-        )
-        val_loader =  LinkNeighborLoader(
-            data=val_data,
-            num_neighbors=num_neighbors,
-            neg_sampling_ratio=2 if kwargs["do_neg_sampling"] else None,
-            edge_label_index=(("user", "rates", "book"), val_data["user", "rates", "book"].edge_label_index),
-            edge_label=val_data["user", "rates", "book"].edge_label,
-            batch_size=kwargs['batch_size'],
-            shuffle=True,
-        )
-    elif kwargs['sampler_type'] == "HGT":
-        train_loader = HGTLoader(
-            train_data,
-            num_samples=num_neighbors,  
-            shuffle=True,
-            input_nodes=("user", None),
-        )
-        val_loader = HGTLoader(
-            val_data,
-            num_samples=num_neighbors,
-            shuffle=False,
-            input_nodes=("user", None),
-        )
-        
+    
     if kwargs['verbose']:
         print("\nData loaded successfully")
         print("\nTrain HeteroData:\n\n{}", train_data)
@@ -175,9 +140,9 @@ def main(**kwargs):
         print("\n\nStarting training...\n")
     
     # Start training
-    model.train_loop(
-        train_loader=train_loader,
-        val_loader=val_loader,
+    model.train_loop_full_batch(
+        train_data,
+        val_data,
         optimizer=optimizer,
         num_epochs=kwargs['num_epochs'],
         writer=writer,

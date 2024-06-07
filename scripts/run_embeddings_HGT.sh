@@ -17,15 +17,16 @@ python scripts/trainer.py \
     --data_path ./data/splitted_data \
     --output_dir ./output \
     --model_type GNN \
-    --num_conv_layers 4 \
+    --num_conv_layers 2 \
     --hidden_channels 128 \
-    --num_decoder_layers 4 \
-    --num_epochs 15 \
+    --num_decoder_layers 2 \
+    --num_epochs 1 \
     --lr $lr \
     --sampler_type HGT \
-    --num_neighbors 1 \
-    --batch_size 4096 \
-    --device cpu \
+    --num_neighbors 1024 \
+    --batch_size 128 \
+    --device mps \
     --use_embedding_layers \
     --num_iterations_loader 2 \
+    --encoder_arch SAGE
     --verbose

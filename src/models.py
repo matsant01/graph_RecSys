@@ -172,6 +172,30 @@ class GNN(torch.nn.Module):
             avg_val_loss = total_val_loss / total_val_examples
 
         return avg_val_loss, predictions
+    
+
+    def evaluation_full_batch(self, val_data, device): 
+
+        self.eval()
+        with torch.no_grad():
+
+            predictions = []
+            labels = []
+            batch = val_data.to(device)
+            preds = self.forward(batch)
+            
+            predictions.append(preds)
+            labels.append(batch["user", "rates", "book"].edge_label.to(torch.float32))
+
+            loss = torch.sqrt(F.mse_loss(
+                input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
+                target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
+            ))
+
+                
+            # avg_val_loss = total_val_loss / total_val_examples
+
+        return loss, predictions
 
     
     
@@ -208,10 +232,10 @@ class GNN(torch.nn.Module):
                 
                 # Forward pass
                 preds = self.forward(batch)
-                loss = F.mse_loss(
+                loss = torch.sqaure(F.mse_loss(
                     input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
                     target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
-                )
+                ))
 
                 # Update weights
                 loss.backward()
@@ -247,3 +271,74 @@ class GNN(torch.nn.Module):
 
             self.train()
         
+
+    def train_loop_full_batch(
+        self,
+        train_data,
+        val_data,
+        optimizer: torch.optim.Optimizer,
+        num_epochs: int,
+        writer: SummaryWriter,
+        device: torch.device,
+        seed: int = 42,
+    ):
+        """
+        Train the model full batch using the given data and optimizer while logging the training process.
+        Validation is performed at the end of each epoch.
+        :param data: HeteroData containing the graph
+        :param optimizer: Optimizer to use for training
+        :param num_epochs: Number of epochs to train the model
+        :param writer: SummaryWriter to log the training process
+        :param device: Device to use for training
+        """
+        self.train()
+        
+        for epoch in range(num_epochs):
+            total_loss = 0
+            total_examples = 0
+            
+            ######################## Train one epoch ########################
+            optimizer.zero_grad()
+            batch = train_data.to(device)
+            
+            # Forward pass
+            preds = self.forward(batch)
+            loss = torch.square(F.mse_loss(
+                input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
+                target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
+            ))
+
+            # Update weights
+            loss.backward()
+            optimizer.step()
+            
+            # Log the loss
+            if writer is not None:
+                writer.add_scalar(
+                    tag="train/loss",
+                    scalar_value=loss.item(),
+                    global_step=epoch 
+                )
+                
+            # Update total loss and number of examples
+            total_loss += float(loss) * preds.numel()
+            total_examples += preds.numel()
+        
+        # Compute the average loss
+        avg_loss = total_loss / total_examples
+        print(f"\nEpoch {epoch + 1}/{num_epochs} - Average Train Loss: {avg_loss}")
+        
+        ######################## Validate the model ########################
+
+        avg_val_loss, _  = self.evaluation_full_batch(val_data, device)
+        print(f"Epoch {epoch + 1}/{num_epochs} - Average Validation Loss: {avg_val_loss}")
+        
+        if writer is not None:
+            writer.add_scalar(
+                tag="val/loss",
+                scalar_value=avg_val_loss,
+                global_step=epoch
+            )
+
+        self.train()
+    
