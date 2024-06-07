@@ -356,6 +356,7 @@ class GNN(torch.nn.Module):
         num_epochs: int,
         writer: SummaryWriter,
         device: torch.device,
+        val_steps: int = 500,
         seed: int = 42,
     ):
         """
@@ -415,63 +416,64 @@ class GNN(torch.nn.Module):
             print(len(batch))
             print(f"\nEpoch {epoch + 1}/{num_epochs} - Train Loss: {float(loss)}")
         
-            ######################## Validate the model ########################
-            # Compute validation loss
-            avg_val_loss, predictions  = self.evaluation_full_batch(val_data, device, criterion)
-            print(f"Epoch {epoch + 1}/{num_epochs} - Validation Loss: {avg_val_loss}")
-            
-            if writer is not None:
-                writer.add_scalar(
-                    tag="val/loss",
-                    scalar_value=avg_val_loss,
-                    global_step=epoch
-                )
+            if epoch % val_steps == 0:
+                ######################## Validate the model ########################
+                # Compute validation loss
+                avg_val_loss, predictions  = self.evaluation_full_batch(val_data, device, criterion)
+                print(f"Epoch {epoch + 1}/{num_epochs} - Validation Loss: {avg_val_loss}")
                 
-            # Extract most likely class if the model is a classifier
-            if self.is_classifier:
-                predictions = torch.cat(predictions, dim=0).argmax(dim=-1).cpu().numpy()
-            else:
-                predictions = torch.cat(predictions, dim=0).cpu().numpy()
-        
-            # Compute metrics
-            k = 5
-            results_df = pd.DataFrame([
-                {
-                    "user_id": int(user_id),
-                    "book_id": int(book_id),
-                    "rating": int(true_label),
-                    "predicted_rating": int(predicted_label),
-                }
-                for user_id, book_id, true_label, predicted_label in zip(
-                    val_data[("user", "rates", "book")].edge_label_index[0],
-                    val_data[("user", "rates", "book")].edge_label_index[1],
-                    val_data[("user", "rates", "book")].edge_label,
-                    predictions,
-                )
-            ])
+                if writer is not None:
+                    writer.add_scalar(
+                        tag="val/loss",
+                        scalar_value=avg_val_loss,
+                        global_step=epoch
+                    )
+                    
+                # Extract most likely class if the model is a classifier
+                if self.is_classifier:
+                    predictions = torch.cat(predictions, dim=0).argmax(dim=-1).cpu().numpy()
+                else:
+                    predictions = torch.cat(predictions, dim=0).cpu().numpy()
             
-            top_k_recommendations = get_top_k_recommendations(results_df, k)
-            actual_items = get_actual_items(results_df, k) # ground truth
-            mean_precision, mean_recall, mean_f1 = evaluate_recommendations(top_k_recommendations, actual_items, k)
-            print(f"Mean Precision@{k}: {mean_precision}")
-            print(f"Mean Recall@{k}: {mean_recall}")
-            print(f"Mean F1 Score@{k}: {mean_f1}")
-            if writer is not None:
-                writer.add_scalar(
-                    tag=f"val/precision@{k}",
-                    scalar_value=mean_precision,
-                    global_step=epoch
-                )
-                writer.add_scalar(
-                    tag=f"val/recall@{k}",
-                    scalar_value=mean_recall,
-                    global_step=epoch
-                )
-                writer.add_scalar(
-                    tag=f"val/f1@{k}",
-                    scalar_value=mean_f1,
-                    global_step=epoch
-                )
+                # Compute metrics
+                k = 5
+                results_df = pd.DataFrame([
+                    {
+                        "user_id": int(user_id),
+                        "book_id": int(book_id),
+                        "rating": int(true_label),
+                        "predicted_rating": int(predicted_label),
+                    }
+                    for user_id, book_id, true_label, predicted_label in zip(
+                        val_data[("user", "rates", "book")].edge_label_index[0],
+                        val_data[("user", "rates", "book")].edge_label_index[1],
+                        val_data[("user", "rates", "book")].edge_label,
+                        predictions,
+                    )
+                ])
+                
+                top_k_recommendations = get_top_k_recommendations(results_df, k)
+                actual_items = get_actual_items(results_df, k) # ground truth
+                mean_precision, mean_recall, mean_f1 = evaluate_recommendations(top_k_recommendations, actual_items, k)
+                print(f"Mean Precision@{k}: {mean_precision}")
+                print(f"Mean Recall@{k}: {mean_recall}")
+                print(f"Mean F1 Score@{k}: {mean_f1}")
+                if writer is not None:
+                    writer.add_scalar(
+                        tag=f"val/precision@{k}",
+                        scalar_value=mean_precision,
+                        global_step=epoch
+                    )
+                    writer.add_scalar(
+                        tag=f"val/recall@{k}",
+                        scalar_value=mean_recall,
+                        global_step=epoch
+                    )
+                    writer.add_scalar(
+                        tag=f"val/f1@{k}",
+                        scalar_value=mean_f1,
+                        global_step=epoch
+                    )
 
-            self.train()
+                self.train()
     
