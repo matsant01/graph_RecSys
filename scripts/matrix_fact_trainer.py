@@ -51,14 +51,15 @@ def main():
     model.train_loop(full_data, train_data, eval_data)
 
     k = 5
+    threshold = 4
+    map_k = 10
     test_data['predicted_rating'] = model.predict(test_data)
-    top_k_recommendations = get_top_k_recommendations(test_data, k)
-    actual_items = get_actual_items(test_data, k) # ground truth
+
     
     print("--- Evaluation ---")
 
     # Evaluate the recommendations  
-    mean_precision, mean_recall, mean_f1 = evaluate_recommendations(top_k_recommendations, actual_items, k)
+    mean_precision, mean_recall, mean_f1 = evaluate_recommendations(test_data, threshold, k, map_k)
     print(f"Mean Precision@{k}: {mean_precision}")
     print(f"Mean Recall@{k}: {mean_recall}")
     print(f"Mean F1 Score@{k}: {mean_f1}")

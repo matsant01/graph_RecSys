@@ -63,17 +63,16 @@ def load_data(test_data,  config):
 
 def compute_save_metrics(test_data, predictions, model_folder):
     for k in [5, 10, 25]:
+        threshold = 4
+        map_k = 10
+
         test_data['predicted_rating'] = predictions
-        top_k_recommendations = get_top_k_recommendations(test_data, k)
-
-        # only consider item rated 4 or 5 as relevant
-        actual_items = get_actual_items(test_data, k) # ground truth
-
-        # Evaluate the recommendations
-        mean_precision, mean_recall, mean_f1 = evaluate_recommendations(top_k_recommendations, actual_items, k)
+        # Evaluate the recommendations  
+        mean_precision, mean_recall, mean_f1, map_k = evaluate_recommendations(test_data, threshold, k, 10)
         print(f"Mean Precision@{k}: {mean_precision}")
         print(f"Mean Recall@{k}: {mean_recall}")
         print(f"Mean F1 Score@{k}: {mean_f1}")
+        print(f"Mean Average Precision@{k}: {map_k}")
 
         metrics = {
             f"Mean Precision@{k}": mean_precision,

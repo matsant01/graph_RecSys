@@ -433,45 +433,50 @@ class GNN(torch.nn.Module):
             else:
                 predictions = torch.cat(predictions, dim=0).cpu().numpy()
         
-            # Compute metrics
-            k = 5
-            results_df = pd.DataFrame([
-                {
-                    "user_id": int(user_id),
-                    "book_id": int(book_id),
-                    "rating": int(true_label),
-                    "predicted_rating": int(predicted_label),
-                }
-                for user_id, book_id, true_label, predicted_label in zip(
-                    val_data[("user", "rates", "book")].edge_label_index[0],
-                    val_data[("user", "rates", "book")].edge_label_index[1],
-                    val_data[("user", "rates", "book")].edge_label,
-                    predictions,
-                )
-            ])
-            
-            top_k_recommendations = get_top_k_recommendations(results_df, k)
-            actual_items = get_actual_items(results_df, k) # ground truth
-            mean_precision, mean_recall, mean_f1 = evaluate_recommendations(top_k_recommendations, actual_items, k)
-            print(f"Mean Precision@{k}: {mean_precision}")
-            print(f"Mean Recall@{k}: {mean_recall}")
-            print(f"Mean F1 Score@{k}: {mean_f1}")
-            if writer is not None:
-                writer.add_scalar(
-                    tag=f"val/precision@{k}",
-                    scalar_value=mean_precision,
-                    global_step=epoch
-                )
-                writer.add_scalar(
-                    tag=f"val/recall@{k}",
-                    scalar_value=mean_recall,
-                    global_step=epoch
-                )
-                writer.add_scalar(
-                    tag=f"val/f1@{k}",
-                    scalar_value=mean_f1,
-                    global_step=epoch
-                )
+        # Compute metrics
 
-            self.train()
-    
+        k = 5
+        threshold = 4
+        map_k = 10
+
+        results_df = pd.DataFrame([
+            {
+                "user_id": int(user_id),
+                "book_id": int(book_id),
+                "rating": int(true_label),
+                "predicted_rating": int(predicted_label),
+            }
+            for user_id, book_id, true_label, predicted_label in zip(
+                val_data[("user", "rates", "book")].edge_label_index[0],
+                val_data[("user", "rates", "book")].edge_label_index[1],
+                val_data[("user", "rates", "book")].edge_label,
+                predictions,
+            )
+        ])
+
+
+        # Evaluate the recommendations  
+
+        mean_precision, mean_recall, mean_f1, map_k = evaluate_recommendations(results_df, threshold, k, 10)
+        print(f"Mean Precision@{k}: {mean_precision}")
+        print(f"Mean Recall@{k}: {mean_recall}")
+        print(f"Mean F1 Score@{k}: {mean_f1}")
+        print(f"Mean Average Precision@{k}: {map_k}")
+        if writer is not None:
+            writer.add_scalar(
+                tag=f"val/precision@{k}",
+                scalar_value=mean_precision,
+                global_step=epoch
+            )
+            writer.add_scalar(
+                tag=f"val/recall@{k}",
+                scalar_value=mean_recall,
+                global_step=epoch
+            )
+            writer.add_scalar(
+                tag=f"val/f1@{k}",
+                scalar_value=mean_f1,
+                global_step=epoch
+            )
+
+        self.train()

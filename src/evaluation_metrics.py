@@ -2,65 +2,58 @@ import numpy as np
 import pandas as pd
 from typing import List, Set
 
-def precision_at_k(recommended_items: List[str], actual_items: Set[str], k: int) -> float:
+def precision_at_k(user_ratings: pd.DataFrame, threshold:int, k: int) -> float:
     """Calculate top-k precision for a single list of recommendations."""
-    if not recommended_items:
-        return 0
-    recommended_k = recommended_items[:k]
-    true_positives = len(set(recommended_k) & actual_items)
-    return true_positives / len(recommended_k)
 
-def recall_at_k(recommended_items: List[str], actual_items: Set[str], k: int) -> float:
+    relevant_items = user_ratings[(user_ratings['rating'] >= threshold)].sort_values('rating', ascending=False).head(k)
+    relevant_recommended_items = len(relevant_items[relevant_items['predicted_rating'] >= threshold])
+
+    # if there are no relevant items, precision is 1 as there is nothing to recommend
+    if len(relevant_items) == 0:
+        return 1
+    return relevant_recommended_items / len(relevant_items)
+
+def recall_at_k(user_ratings: pd.DataFrame, threshold:int, k: int) -> float:
     """Calculate top-k recall for a single list of recommendations."""
-    if not actual_items:
-        return 0
-    recommended_k = recommended_items[:k]
-    true_positives = len(set(recommended_k) & actual_items)
-    return true_positives / len(actual_items)
+    relevant_items = user_ratings[(user_ratings['rating'] >= threshold)].sort_values('rating', ascending=False)
+    tot_relevant_items = len(relevant_items)
+    relevant_items = relevant_items.head(k)
+    relevant_recommended_items = len(relevant_items[relevant_items['predicted_rating'] >= threshold])
+    
+    # if there are no relevant items, precision is 1 as there is nothing to recommend
+    if relevant_items.shape[0] == 0:
+        return 1
+    
+    return relevant_recommended_items / tot_relevant_items
 
-def f1_score_at_k(recommended_items: List[str], actual_items: Set[str], k: int) -> float:
+def f1_score_at_k(precision, recall) -> float:
     """Calculate F1 score at k."""
-    precision = precision_at_k(recommended_items, actual_items, k)
-    recall = recall_at_k(recommended_items, actual_items, k)
-    if precision == 0 and recall == 0:
+    if precision + recall == 0:
         return 0
     return 2 * (precision * recall) / (precision + recall)
 
-def get_top_k_recommendations(data: pd.DataFrame, k: int) -> pd.Series:
-    """Get top-k recommended books for each user based on predicted ratings."""
-    top_k_recommendations = data.sort_values(['user_id', 'predicted_rating'], ascending=[True, False]) \
-                                .groupby('user_id')['book_id'] \
-                                .apply(lambda x: x.head(k).tolist())
-    return top_k_recommendations
-
-def get_actual_items(data: pd.DataFrame, k: int) -> pd.Series:
-    """Get items that have been rated equal to or above a certain threshold."""
-    relevant_items = data.sort_values(['user_id', 'rating'], ascending=[True, False]) \
-                                .groupby('user_id')['book_id'] \
-                                .apply(lambda x: x.head(k).tolist())
-    return relevant_items
-
-def evaluate_recommendations(top_k_recommendations: pd.Series, actual_items: pd.Series, k: int) -> tuple:
+def evaluate_recommendations(data: pd.DataFrame, threshold:int, k: int, n_precisions) -> tuple:
     precision_scores = []
     recall_scores = []
     f1_scores = []
+    map_k = []
 
-    users = set(top_k_recommendations.index).intersection(set(actual_items.index))
-
-    for user in users:
-        recommended_items = top_k_recommendations.loc[user]
-        actual_items_user = set(actual_items.loc[user])
-        precision = precision_at_k(recommended_items, actual_items_user, k)
-        recall = recall_at_k(recommended_items, actual_items_user, k)
-        f1 = f1_score_at_k(recommended_items, actual_items_user, k)
+    for user in data.user_id.unique():
+        user_ratings = data[data['user_id'] == user]
+        precision = precision_at_k(user_ratings, threshold, k)
+        recall = recall_at_k(user_ratings, threshold, k)
+        f1 = f1_score_at_k(precision, recall)
+        precisions = [precision_at_k(user_ratings, threshold, i) for i in range(1, n_precisions)]
 
         precision_scores.append(precision)
         recall_scores.append(recall)
         f1_scores.append(f1)
+        map_k.append(np.mean(precisions))
 
     # Averaging the scores
     mean_precision = np.mean(precision_scores)
     mean_recall = np.mean(recall_scores)
     mean_f1 = np.mean(f1_scores)
+    map_k = np.mean(map_k)
 
-    return mean_precision, mean_recall, mean_f1
+    return mean_precision, mean_recall, mean_f1, map_k
