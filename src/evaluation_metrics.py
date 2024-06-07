@@ -33,11 +33,11 @@ def get_top_k_recommendations(data: pd.DataFrame, k: int) -> pd.Series:
                                 .apply(lambda x: x.head(k).tolist())
     return top_k_recommendations
 
-def get_actual_items(data: pd.DataFrame, threshold: int) -> pd.Series:
+def get_actual_items(data: pd.DataFrame, k: int) -> pd.Series:
     """Get items that have been rated equal to or above a certain threshold."""
-    relevant_items = data[data['rating'] >= threshold] \
-                     .groupby('user_id')['book_id'] \
-                     .apply(list)
+    relevant_items = data.sort_values(['user_id', 'rating'], ascending=[True, False]) \
+                                .groupby('user_id')['book_id'] \
+                                .apply(lambda x: x.head(k).tolist())
     return relevant_items
 
 def evaluate_recommendations(top_k_recommendations: pd.Series, actual_items: pd.Series, k: int) -> tuple:
