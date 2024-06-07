@@ -37,23 +37,24 @@ def load_model(model_folder, full_data, config):
 
 def load_data(test_data,  config):
     # using same loader as during training
+    num_neighbors = [config['num_neighbors_in_sampling']] * config['num_iterations_loader']
     if config['sampler_type'] == "link-neighbor":
         test_loader =  LinkNeighborLoader(
             data=test_data,
-            num_neighbors=[25, 25],
+            num_neighbors=num_neighbors,
             neg_sampling_ratio=0,  # no negative sampling, otherwise number of prediction wouldn't match the number of labels
             edge_label_index=(("user", "rates", "book"), test_data["user", "rates", "book"].edge_label_index),
             edge_label=test_data["user", "rates", "book"].edge_label,
-            batch_size=4096,
+            batch_size=config['batch_size'],
             shuffle=True,
         )
 
     elif config['sampler_type']  == "HGT":
         test_loader = HGTLoader(
             test_data,
-            num_samples=[1024] * 4,  
+            num_samples=num_neighbors,  
             shuffle=True,
-            batch_size=128,
+            batch_size=config['batch_size'],
             input_nodes=("user", None),
         )
         
@@ -85,25 +86,8 @@ def compute_save_metrics(test_data, predictions, model_folder):
     
     test_data.to_csv(os.path.join(model_folder, 'predictions.csv'))
 
-def main(args, device):
+def evaluate_model_in_folder(model_folder, test_data, full_data, test_data_csv): 
 
-    model_folder = args.model_folder
-    data_folder = args.data_folder
-    
-    # check if model folder has modelpt file
-    test_data = torch.load(os.path.join(data_folder, "test_hetero.pt")).to(device)
-    test_data_csv = pd.read_csv(os.path.join(data_folder, "test.csv"))
-    full_data = torch.load(os.path.join(data_folder, "data_hetero.pt")).to(device)
-
-    # iterate over all the model folders
-    # for model_folder in os.listdir(models_folder)[-1:]:
-    #     model_folder = os.path.join(models_folder, model_folder)
-
-    # only consider folders with model.pt file
-
-    if not os.path.exists(os.path.join(model_folder, 'model.pt')):
-        raise Exception('no model.pt')
-    
     config = json.load(open(os.path.join(model_folder, 'config.json')))
     test_loader = load_data(test_data, config)
 
@@ -114,11 +98,39 @@ def main(args, device):
     predictions = torch.cat(predictions, dim=0).cpu().numpy()
     compute_save_metrics(test_data_csv, predictions, model_folder)
 
+
+def main(args, device):
+
+    model_folder = args.model_folder
+    data_folder = args.data_folder
     
+    # check if model folder has modelpt file
+    test_data = torch.load(os.path.join(data_folder, "test_hetero.pt")).to(device)
+    test_data_csv = pd.read_csv(os.path.join(data_folder, "test.csv"))
+    full_data = torch.load(os.path.join(data_folder, "data_hetero.pt")).to(device)
+
+    print(os.path.join(model_folder, 'model.pt'))
+
+    if os.path.exists(os.path.join(model_folder, 'model.pt')):
+        evaluate_model_in_folder(model_folder, test_data, full_data, test_data_csv)
+
+    else: 
+        # iterate over all the model folders
+        for model_dir in os.listdir(model_folder):
+            model_dir = os.path.join(model_folder, model_dir)
+
+            print(model_dir)
+            # only consider folders with model.pt file
+            if not os.path.exists(os.path.join(model_dir, 'model.pt')):
+                continue
+
+            evaluate_model_in_folder(model_dir, test_data, full_data, test_data_csv)
+        
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Load models and make predictions.')
-    parser.add_argument('--model_folder', type=str, required=True, help='Directory containing the model.pt file.')
+    parser.add_argument('--model_folder', type=str, required=True, help='Directory containing folder with model.pt files, a single folder with model.pt')
     parser.add_argument('--data_folder', type=str, required=True, help='Directory containing the data files.')
     
     args = parser.parse_args()
