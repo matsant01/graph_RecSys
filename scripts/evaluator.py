@@ -67,7 +67,7 @@ def compute_save_metrics(test_data, predictions, model_folder):
         top_k_recommendations = get_top_k_recommendations(test_data, k)
 
         # only consider item rated 4 or 5 as relevant
-        actual_items = get_actual_items(test_data, 4) # ground truth
+        actual_items = get_actual_items(test_data, k) # ground truth
 
         # Evaluate the recommendations
         mean_precision, mean_recall, mean_f1 = evaluate_recommendations(top_k_recommendations, actual_items, k)

@@ -7,5 +7,5 @@ python scripts/trainer.py \
     --num_epochs 15 \
     --lr 0.005 \
     --loss mse \
-    --device cuda:0 \
+    --device mps \
     --verbose

@@ -451,7 +451,7 @@ class GNN(torch.nn.Module):
             ])
             
             top_k_recommendations = get_top_k_recommendations(results_df, k)
-            actual_items = get_actual_items(results_df, 4) # ground truth
+            actual_items = get_actual_items(results_df, k) # ground truth
             mean_precision, mean_recall, mean_f1 = evaluate_recommendations(top_k_recommendations, actual_items, k)
             print(f"Mean Precision@{k}: {mean_precision}")
             print(f"Mean Recall@{k}: {mean_recall}")

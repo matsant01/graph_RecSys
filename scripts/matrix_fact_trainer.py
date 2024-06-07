@@ -53,7 +53,7 @@ def main():
     k = 5
     test_data['predicted_rating'] = model.predict(test_data)
     top_k_recommendations = get_top_k_recommendations(test_data, k)
-    actual_items = get_actual_items(test_data, 4) # ground truth
+    actual_items = get_actual_items(test_data, k) # ground truth
     
     print("--- Evaluation ---")
 
