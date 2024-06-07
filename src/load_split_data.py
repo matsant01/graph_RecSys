@@ -9,6 +9,7 @@ import torch_geometric.transforms as T
 from torch_geometric.data import HeteroData
 from sentence_transformers import SentenceTransformer
 from torch_geometric.transforms import RandomLinkSplit
+import numpy as np
 
 # make result reproducible
 seed_everything(42)  
@@ -16,9 +17,15 @@ random.seed(42)
 
 
 class LoadData:
-    def __init__(self, book_path, ratings_path, device, sample_size=1.0):
+    def __init__(self, book_path, ratings_path, device, user_to_sample=None):
         self.df_books = pd.read_csv(book_path)[['book_id', 'title', 'authors']]   
-        self.df_ratings = pd.read_csv(ratings_path).sample(frac=sample_size, random_state=42)
+        self.df_ratings = pd.read_csv(ratings_path)
+
+        # sample a subset of users and all their ratings
+        if user_to_sample:
+            sampled_users = np.random.choice(self.df_ratings.user_id.unique(), user_to_sample, replace=False)
+            self.df_ratings = self.df_ratings[self.df_ratings.user_id.isin(sampled_users)]
+
         self.device = device
 
 
@@ -114,7 +121,7 @@ class LoadData:
     
         data = HeteroData()
         data['user'].x = torch.tensor(users_features,).detach().float() # (num_users, num_users_features)
-        data['book'].x = torch.tensor(books_features,).detach().float() # (num_books, num_books_features)
+        data['book'].x = books_features.clone().detach().float() # (num_books, num_books_features)
 
         # Add the rating edges:
         data['user', 'rates', 'book'].edge_index = edge_index  # (2, num_ratings)
@@ -175,7 +182,7 @@ if __name__ == "__main__":
     ratings_path = 'data/ratings.csv'
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    loader = LoadData(book_path, ratings_path, device)
+    loader = LoadData(book_path, ratings_path, device, user_to_sample=2000)
     books_features = loader.compute_books_embeddings(loader.df_books)
     users_features = loader.compute_user_embeddings(loader.df_ratings)
     data = loader.create_hetero_graph(books_features, users_features)
