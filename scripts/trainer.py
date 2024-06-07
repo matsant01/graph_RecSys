@@ -27,19 +27,14 @@ def validate_arguments():
     parser = argparse.ArgumentParser(description='Train a model given a dataset and architecture')
     parser.add_argument('--data_path', type=str, help='Path to the folder containing the datasets')
     parser.add_argument('--output_dir', type=str, help='Root folder where model, logs and config will be saved')
-    parser.add_argument('--model_type', type=str, help='Type of model to train. Either "GNN" or "MatrixFactorization"')
     parser.add_argument('--num_conv_layers', type=int, help='Number of SAGE convolutional layers')
     parser.add_argument('--hidden_channels', type=int, help='Number of hidden channels in the SAGE convolutional layers')
     parser.add_argument('--use_embedding_layers', action='store_true', help='Whether to use embedding layers or not')
     parser.add_argument('--num_decoder_layers', type=int, help='Number of decoder layers, if 0 the decoding will be done by a dot product')
     parser.add_argument('--num_epochs', type=int, help='Number of epochs to train the model')
     parser.add_argument('--lr', type=float, help='Learning rate for the optimizer', default=0.01)
-    parser.add_argument('--sampler_type', type=str, help='Type of sampler to use to create batches. Either "link-neighbor" (LinkNeighborLoader) or "HGT" (HGTLoader)')
+    parser.add_argument('--loss', type=str, help='Loss function to use for training. Either "mse", "mae" or "nll"')
     parser.add_argument('--device', type=str, help='Device to use for training.')
-    parser.add_argument('--do_neg_sampling', action='store_true', help='Whether to do negative sampling or not')
-    parser.add_argument('--num_neighbors_in_sampling', type=int, help='Number of neighbors to sample in the sampling process, if applicable. Default is 25', default=25)
-    parser.add_argument('--num_iterations_loader', type=int, help='Number of iterations to load the data', default=2)
-    parser.add_argument('--batch_size', type=int, help='Batch size to use for training. Default is 1024', default=1024)
     parser.add_argument('--encoder_arch', type=str, help='Either GAT or SAGE', default='SAGE')
     parser.add_argument('--verbose', action='store_true', help='Print progress messages')
     
@@ -58,10 +53,6 @@ def validate_arguments():
         raise ValueError("Number of epochs must be greater than 0")
     if args.lr <= 0:
         raise ValueError("Learning rate must be greater than 0")
-    if args.sampler_type not in ['link-neighbor', 'HGT']:
-        raise ValueError("Sampler type must be either 'link-neighbor' or 'HGT'")
-    if args.model_type not in ['GNN', 'MatrixFactorization']:
-        raise ValueError("Model type must be either 'GNN' or 'MatrixFactorization'")
     if "cuda" in args.device and not torch.cuda.is_available():
         raise ValueError("CUDA is not available, please use a CPU device")
     else:
@@ -72,22 +63,6 @@ def validate_arguments():
             raise ValueError("Device {} is not valid".format(args.device))
         
     return args
-
-
-def get_model(data: HeteroData, **kwargs):
-    if kwargs['model_type'] == "GNN":
-        model = GNN(
-            data=data,
-            conv_hidden_channels=kwargs['hidden_channels'],
-            lin_hidden_channels=kwargs['hidden_channels'],
-            num_conv_layers=kwargs['num_conv_layers'],
-            num_decoder_layers=kwargs['num_decoder_layers'],
-            use_embedding_layers=kwargs['use_embedding_layers'],
-            encoder_arch=kwargs['encoder_arch']
-        )
-    elif kwargs['model_type'] == "MatrixFactorization":
-        NotImplementedError("Matrix Factorization model is not implemented yet")
-    return model
     
 
 
@@ -116,6 +91,7 @@ def main(**kwargs):
     # Load data
     train_data = torch.load(os.path.join(kwargs['data_path'], "train_hetero.pt"))
     val_data = torch.load(os.path.join(kwargs['data_path'], "val_hetero.pt"))
+    test_data = torch.load(os.path.join(kwargs['data_path'], "test_hetero.pt"))
     data = torch.load(os.path.join(kwargs['data_path'], "data_hetero.pt"))
     
     
@@ -131,8 +107,27 @@ def main(**kwargs):
     writer = SummaryWriter(log_dir=log_dir)
     
     # Load model and optimizer
-    model = get_model(data, **kwargs).to(device)
+    model = GNN(
+        data=data,
+        conv_hidden_channels=kwargs['hidden_channels'],
+        lin_hidden_channels=kwargs['hidden_channels'],
+        num_conv_layers=kwargs['num_conv_layers'],
+        num_decoder_layers=kwargs['num_decoder_layers'],
+        use_embedding_layers=kwargs['use_embedding_layers'],
+        encoder_arch=kwargs['encoder_arch'],
+        out_dim=1 if kwargs["loss"] != "nll" else 5,    # if we want to see the problem as a classification problem we need to output 5 classes
+    ).to(device)
     optimizer = optim.Adam(model.parameters(), lr=kwargs['lr'])
+    
+    # Choose loss function
+    if kwargs['loss'] == "mse":
+        loss = torch.nn.MSELoss()
+    elif kwargs['loss'] == "mae":
+        loss = torch.nn.L1Loss()
+    elif kwargs['loss'] == "nll":
+        loss = torch.nn.NLLLoss()
+    else:
+        raise ValueError("Loss function {} is not valid".format(kwargs['loss']))
     
     if kwargs['verbose']:
         print("\nModel created successfully and loaded on device: {}".format(device))
@@ -143,6 +138,7 @@ def main(**kwargs):
     model.train_loop_full_batch(
         train_data,
         val_data,
+        criterion=loss,
         optimizer=optimizer,
         num_epochs=kwargs['num_epochs'],
         writer=writer,

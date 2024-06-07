@@ -1,0 +1,11 @@
+python scripts/trainer.py \
+    --data_path ./data/splitted_data \
+    --output_dir ./output \
+    --num_conv_layers 1 \
+    --hidden_channels 16 \
+    --num_decoder_layers 2 \
+    --num_epochs 15 \
+    --lr 0.005 \
+    --loss mse \
+    --device cuda:0 \
+    --verbose

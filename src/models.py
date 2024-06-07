@@ -1,4 +1,6 @@
 import os
+import sys
+import pandas as pd
 from tqdm import tqdm
 
 import torch
@@ -12,6 +14,11 @@ from torch_geometric.nn import SAGEConv, to_hetero
 from torch_geometric.nn.models.basic_gnn import GAT
 from torch import Tensor
 from torch.utils.tensorboard import SummaryWriter
+
+sys.path.append("./.")
+
+from src.evaluation_metrics import * 
+
 
 class SAGEConvEncoder(torch.nn.Module):
     def __init__(self, hidden_channels, out_channels, num_layers):
@@ -43,7 +50,7 @@ class SAGEConvEncoder(torch.nn.Module):
         return x_dict
 
 class EdgeDecoder(torch.nn.Module):
-    def __init__(self, input_channels, hidden_channels, num_layers):
+    def __init__(self, input_channels, hidden_channels, num_layers, out_dim):
         """
         EdgeDecoder is a simple decoder that uses either linear layers or simply a dot product
         of the embeddings, to compute the edge scores.
@@ -52,13 +59,17 @@ class EdgeDecoder(torch.nn.Module):
         :param num_layers: Number of decoder layers. If 0, the model will use a dot product to decode the embeddings.
         """
         super().__init__()
+        if out_dim > 1 and num_layers == 0:
+            raise ValueError("Number of decoder layers must be greater than 0 to perform multi-class classification")
+        self.is_classifier = out_dim > 1
+        
         if num_layers > 0:  # TODO: small fix: if I ask for 1 layer I would always get 2
             self.is_dot_prod = False
             self.lins = torch.nn.ModuleList()
             self.lins.append(torch.nn.Linear(2 * input_channels, hidden_channels))
             for _ in range(num_layers - 2):
                 self.lins.append(torch.nn.Linear(hidden_channels, hidden_channels))
-            self.lins.append(torch.nn.Linear(hidden_channels, 1))
+            self.lins.append(torch.nn.Linear(hidden_channels, out_dim))
         else:
             self.is_dot_prod = True
             print("WARNING: number of decoder layers is 0, the model will use a dot product to decode the embeddings")
@@ -79,8 +90,12 @@ class EdgeDecoder(torch.nn.Module):
                 if i != len(self.lins) - 1:
                     z = lin(z).relu()
                 else:
-                    z = lin(z).view(-1)
-            return z
+                    z = lin(z)
+            
+            if self.is_classifier:
+                return F.log_softmax(z, dim=-1)
+            else:
+                return z.view(-1)
         
         
 class GNN(torch.nn.Module):
@@ -94,7 +109,8 @@ class GNN(torch.nn.Module):
         book_channels: int = 384,
         user_channels: int = 3,
         num_decoder_layers: int = 1,
-        encoder_arch: str = 'SAGE'
+        encoder_arch: str = 'SAGE',
+        out_dim: int = 1,
     ):
         """
         General Architecture used for our GNN-based recommender system.
@@ -105,11 +121,15 @@ class GNN(torch.nn.Module):
         :param book_channels: Number of channels in the book embeddings
         :param user_channels: Number of channels in the user embeddings
         :param num_decoder_layers: Number of decoder layers. If 0, the model will use a dot product to decode the embeddings.
+        :param encoder_arch: Type of encoder to use. Either 'SAGE' or 'GAT'
+        :param out_dim: If bigger than 1 the model will be performing a multi-class classification.
         """
         super().__init__()
         
         # Define embeddings for the user and book nodes, and linear layers to transform original features
         self.use_embedding_layers = use_embedding_layers
+        self.is_classifier = out_dim > 1
+        
         if use_embedding_layers:
             self.user_emb = torch.nn.Embedding(data["user"].num_nodes, conv_hidden_channels)
             self.book_emb = torch.nn.Embedding(data["book"].num_nodes, conv_hidden_channels)
@@ -126,7 +146,12 @@ class GNN(torch.nn.Module):
                                 out_channels = conv_hidden_channels,
                                 add_self_loops = False)
         self.encoder = to_hetero(self.encoder, data.metadata(), aggr='sum')
-        self.decoder = EdgeDecoder(conv_hidden_channels, lin_hidden_channels, num_decoder_layers)
+        self.decoder = EdgeDecoder(
+            input_channels=conv_hidden_channels,
+            hidden_channels=lin_hidden_channels,
+            num_layers=num_decoder_layers,
+            out_dim=out_dim
+        )
         
     def forward(self, data: HeteroData):
         """
@@ -147,8 +172,8 @@ class GNN(torch.nn.Module):
         # Compute the edge scores over the edge_label_index (to be compared with the edge_label)
         return self.decoder(x_dict, data["user", "rates", "book"].edge_label_index)
     
-    def evaluation(self, val_loader, device): 
-
+    
+    def evaluation(self, val_loader, device, criterion): 
         self.eval()
         with torch.no_grad():
             total_val_loss = 0
@@ -162,10 +187,28 @@ class GNN(torch.nn.Module):
                 predictions.append(preds)
                 labels.append(batch["user", "rates", "book"].edge_label.to(torch.float32))
 
-                loss = torch.sqrt(F.mse_loss(
-                    input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
-                    target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
-                ))
+                # Loss computation
+                if isinstance(criterion, torch.nn.MSELoss) and not self.is_classifier:
+                    loss = criterion(
+                        input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
+                        target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
+                    )
+                elif isinstance(criterion, torch.nn.NLLLoss) and self.is_classifier:
+                    loss = criterion(
+                        input=preds,
+                        targets = (batch["user", "rates", "book"].edge_label - 1).to(torch.long)
+                    )
+                elif isinstance(criterion, torch.nn.L1Loss) and not self.is_classifier:
+                    loss = criterion(
+                        input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
+                        target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
+                    )
+                else:
+                    raise ValueError("Criterion {} not supported with model {}being a classifier".format(
+                        criterion.__class__.__name__, 
+                        "" if self.is_classifier else "not ",
+                    ))
+                
                 total_val_loss += float(loss) * preds.numel()
                 total_val_examples += preds.numel()
                 
@@ -174,11 +217,9 @@ class GNN(torch.nn.Module):
         return avg_val_loss, predictions
     
 
-    def evaluation_full_batch(self, val_data, device): 
-
+    def evaluation_full_batch(self, val_data, device, criterion): 
         self.eval()
         with torch.no_grad():
-
             predictions = []
             labels = []
             batch = val_data.to(device)
@@ -187,15 +228,29 @@ class GNN(torch.nn.Module):
             predictions.append(preds)
             labels.append(batch["user", "rates", "book"].edge_label.to(torch.float32))
 
-            loss = torch.sqrt(F.mse_loss(
-                input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
-                target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
-            ))
+            # Loss computation
+            if isinstance(criterion, torch.nn.MSELoss) and not self.is_classifier:
+                loss = criterion(
+                    input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
+                    target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
+                )
+            elif isinstance(criterion, torch.nn.NLLLoss) and self.is_classifier:
+                loss = criterion(
+                    input=preds,
+                    targets = (batch["user", "rates", "book"].edge_label - 1).to(torch.long)
+                )
+            elif isinstance(criterion, torch.nn.L1Loss) and not self.is_classifier:
+                loss = criterion(
+                    input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
+                    target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
+                )
+            else:
+                raise ValueError("Criterion {} not supported with model {}being a classifier".format(
+                    criterion.__class__.__name__, 
+                    "" if self.is_classifier else "not ",
+                ))
 
-                
-            # avg_val_loss = total_val_loss / total_val_examples
-
-        return loss, predictions
+        return loss.item(), predictions
 
     
     
@@ -203,6 +258,7 @@ class GNN(torch.nn.Module):
         self,
         train_loader,
         val_loader,
+        criterion,
         optimizer: torch.optim.Optimizer,
         num_epochs: int,
         writer: SummaryWriter,
@@ -214,6 +270,7 @@ class GNN(torch.nn.Module):
         Validation is performed at the end of each epoch.
         :param data: HeteroData containing the graph
         :param optimizer: Optimizer to use for training
+        :param criterion: Loss function to use for training
         :param num_epochs: Number of epochs to train the model
         :param writer: SummaryWriter to log the training process
         :param device: Device to use for training
@@ -232,10 +289,28 @@ class GNN(torch.nn.Module):
                 
                 # Forward pass
                 preds = self.forward(batch)
-                loss = torch.sqaure(F.mse_loss(
-                    input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
-                    target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
-                ))
+                
+                # Loss computation
+                if isinstance(criterion, torch.nn.MSELoss) and not self.is_classifier:
+                    loss = criterion(
+                        input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
+                        target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
+                    )
+                elif isinstance(criterion, torch.nn.NLLLoss) and self.is_classifier:
+                    loss = criterion(
+                        input=preds,
+                        targets = (batch["user", "rates", "book"].edge_label - 1).to(torch.long)
+                    )
+                elif isinstance(criterion, torch.nn.L1Loss) and not self.is_classifier:
+                    loss = criterion(
+                        input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
+                        target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
+                    )
+                else:
+                    raise ValueError("Criterion {} not supported with model {}being a classifier".format(
+                        criterion.__class__.__name__, 
+                        "" if self.is_classifier else "not ",
+                    ))
 
                 # Update weights
                 loss.backward()
@@ -276,6 +351,7 @@ class GNN(torch.nn.Module):
         self,
         train_data,
         val_data,
+        criterion,
         optimizer: torch.optim.Optimizer,
         num_epochs: int,
         writer: SummaryWriter,
@@ -286,6 +362,7 @@ class GNN(torch.nn.Module):
         Train the model full batch using the given data and optimizer while logging the training process.
         Validation is performed at the end of each epoch.
         :param data: HeteroData containing the graph
+        :param criterion: Loss function to use for training
         :param optimizer: Optimizer to use for training
         :param num_epochs: Number of epochs to train the model
         :param writer: SummaryWriter to log the training process
@@ -294,19 +371,34 @@ class GNN(torch.nn.Module):
         self.train()
         
         for epoch in (range(num_epochs)):
-            total_loss = 0
-            total_examples = 0
-            
             ######################## Train one epoch ########################
             optimizer.zero_grad()
             batch = train_data.to(device)
             
             # Forward pass
             preds = self.forward(batch)
-            loss = torch.square(F.mse_loss(
-                input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
-                target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
-            ))
+
+            # Loss computation
+            if isinstance(criterion, torch.nn.MSELoss) and not self.is_classifier:
+                loss = criterion(
+                    input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
+                    target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
+                )
+            elif isinstance(criterion, torch.nn.NLLLoss) and self.is_classifier:
+                loss = criterion(
+                    input=preds,
+                    targets = (batch["user", "rates", "book"].edge_label - 1).to(torch.long)
+                )
+            elif isinstance(criterion, torch.nn.L1Loss) and not self.is_classifier:
+                loss = criterion(
+                    input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
+                    target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
+                )
+            else:
+                raise ValueError("Criterion {} not supported with model {}being a classifier".format(
+                    criterion.__class__.__name__, 
+                    "" if self.is_classifier else "not ",
+                ))
 
             # Update weights
             loss.backward()
@@ -323,17 +415,63 @@ class GNN(torch.nn.Module):
             print(len(batch))
             print(f"\nEpoch {epoch + 1}/{num_epochs} - Train Loss: {float(loss)}")
         
-        ######################## Validate the model ########################
-
-        avg_val_loss, _  = self.evaluation_full_batch(val_data, device)
-        print(f"Epoch {epoch + 1}/{num_epochs} - Validation Loss: {avg_val_loss}")
+            ######################## Validate the model ########################
+            # Compute validation loss
+            avg_val_loss, predictions  = self.evaluation_full_batch(val_data, device, criterion)
+            print(f"Epoch {epoch + 1}/{num_epochs} - Validation Loss: {avg_val_loss}")
+            
+            if writer is not None:
+                writer.add_scalar(
+                    tag="val/loss",
+                    scalar_value=avg_val_loss,
+                    global_step=epoch
+                )
+                
+            # Extract most likely class if the model is a classifier
+            if self.is_classifier:
+                predictions = torch.cat(predictions, dim=0).argmax(dim=-1).cpu().numpy()
+            else:
+                predictions = torch.cat(predictions, dim=0).cpu().numpy()
         
-        if writer is not None:
-            writer.add_scalar(
-                tag="val/loss",
-                scalar_value=avg_val_loss,
-                global_step=epoch
-            )
+            # Compute metrics
+            k = 5
+            results_df = pd.DataFrame([
+                {
+                    "user_id": int(user_id),
+                    "book_id": int(book_id),
+                    "rating": int(true_label),
+                    "predicted_rating": int(predicted_label),
+                }
+                for user_id, book_id, true_label, predicted_label in zip(
+                    val_data[("user", "rates", "book")].edge_label_index[0],
+                    val_data[("user", "rates", "book")].edge_label_index[1],
+                    val_data[("user", "rates", "book")].edge_label,
+                    predictions,
+                )
+            ])
+            
+            top_k_recommendations = get_top_k_recommendations(results_df, k)
+            actual_items = get_actual_items(results_df, 4) # ground truth
+            mean_precision, mean_recall, mean_f1 = evaluate_recommendations(top_k_recommendations, actual_items, k)
+            print(f"Mean Precision@{k}: {mean_precision}")
+            print(f"Mean Recall@{k}: {mean_recall}")
+            print(f"Mean F1 Score@{k}: {mean_f1}")
+            if writer is not None:
+                writer.add_scalar(
+                    tag=f"val/precision@{k}",
+                    scalar_value=mean_precision,
+                    global_step=epoch
+                )
+                writer.add_scalar(
+                    tag=f"val/recall@{k}",
+                    scalar_value=mean_recall,
+                    global_step=epoch
+                )
+                writer.add_scalar(
+                    tag=f"val/f1@{k}",
+                    scalar_value=mean_f1,
+                    global_step=epoch
+                )
 
-        self.train()
+            self.train()
     
