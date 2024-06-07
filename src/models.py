@@ -356,6 +356,7 @@ class GNN(torch.nn.Module):
         num_epochs: int,
         writer: SummaryWriter,
         device: torch.device,
+        val_steps: int = 500,
         seed: int = 42,
     ):
         """
