@@ -14,12 +14,21 @@ from src.evaluation_metrics import *
 
 
 def load_model(model_folder, full_data, config):
-    # creating architecutre with the same config
-    model = GNN(data=full_data,
-                conv_hidden_channels=config['hidden_channels'],
-                lin_hidden_channels=config['hidden_channels'],
-                num_conv_layers=config['num_conv_layers'],
-                num_decoder_layers=config['num_decoder_layers'])
+    if "encoder_arch" in config: 
+        model = GNN(data=full_data,
+                    conv_hidden_channels=config['hidden_channels'],
+                    lin_hidden_channels=config['hidden_channels'],
+                    num_conv_layers=config['num_conv_layers'],
+                    num_decoder_layers=config['num_decoder_layers'],
+                    use_embedding_layers=config['use_embedding_layers'], 
+                    encoder_arch=config["encoder_arch"])
+    else: 
+        model = GNN(data=full_data,
+                    conv_hidden_channels=config['hidden_channels'],
+                    lin_hidden_channels=config['hidden_channels'],
+                    num_conv_layers=config['num_conv_layers'],
+                    num_decoder_layers=config['num_decoder_layers'],
+                    use_embedding_layers=config['use_embedding_layers'])
 
     model_folder = os.path.join(model_folder, 'model.pt')
     model.load_state_dict(torch.load(model_folder))
@@ -73,10 +82,12 @@ def compute_save_metrics(test_data, predictions, model_folder):
 
     with open(os.path.join(model_folder, 'metrics.json'), 'w') as f:
         json.dump(metrics, f, indent=4)
+    
+    test_data.to_csv(os.path.join(model_folder, 'predictions.csv'))
 
 def main(args, device):
 
-    models_folder = args.model_folder
+    model_folder = args.model_folder
     data_folder = args.data_folder
     
     # check if model folder has modelpt file
@@ -85,23 +96,23 @@ def main(args, device):
     full_data = torch.load(os.path.join(data_folder, "data_hetero.pt")).to(device)
 
     # iterate over all the model folders
-    for model_folder in os.listdir(models_folder):
-        model_folder = os.path.join(models_folder, model_folder)
+    # for model_folder in os.listdir(models_folder)[-1:]:
+    #     model_folder = os.path.join(models_folder, model_folder)
 
-        # only consider folders with model.pt file
-        if not os.path.isdir(model_folder):
-            continue
-        if not os.path.exists(os.path.join(model_folder, 'model.pt')):
-            continue
-        
-        config = json.load(open(os.path.join(model_folder, 'config.json')))
-        test_loader = load_data(test_data, config)
+    # only consider folders with model.pt file
 
-        model = load_model(model_folder, full_data, config).to(device)
-        avg_loss, predictions = model.evaluation(test_loader, device)
+    if not os.path.exists(os.path.join(model_folder, 'model.pt')):
+        raise Exception('no model.pt')
+    
+    config = json.load(open(os.path.join(model_folder, 'config.json')))
+    test_loader = load_data(test_data, config)
 
-        predictions = torch.cat(predictions, dim=0).cpu().numpy()
-        compute_save_metrics(test_data_csv, predictions, model_folder)
+    model = load_model(model_folder, full_data, config).to(device)
+    avg_loss, predictions = model.evaluation(test_loader, device)
+
+    print(config)
+    predictions = torch.cat(predictions, dim=0).cpu().numpy()
+    compute_save_metrics(test_data_csv, predictions, model_folder)
 
     
 

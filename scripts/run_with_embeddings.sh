@@ -8,7 +8,6 @@
 #SBATCH --account cs-552
 #SBATCH --qos cs-552
 
-
 # New parameters to search:
 # - With and without the use of learnable embeddings (HERE only with, check other scripts for without)
 # - With more or less neighbors sampled by the loader
@@ -25,9 +24,10 @@ source ~/venvs/nml/bin/activate
 
 lr=0.005
 hidden_channels=128
+conv_layers=2
 
 # Number of conv layers
-for conv_layers in 2 4; do
+for num_iterations_loader in 2 4; do
     # Number of decoder layers        
     for num_neighbors in 100 200 1000; do
         python /scratch/izar/viel/graph_RecSys/scripts/trainer.py \
@@ -36,7 +36,7 @@ for conv_layers in 2 4; do
         --model_type GNN \
         --num_conv_layers $conv_layers \
         --hidden_channels $hidden_channels \
-        --num_decoder_layers 4 \
+        --num_decoder_layers 2 \
         --num_epochs 15 \
         --lr $lr \
         --sampler_type link-neighbor \
@@ -44,7 +44,7 @@ for conv_layers in 2 4; do
         --batch_size 4096 \
         --device cuda \
         --use_embedding_layers \
-        --num_iterations_loader 2 \
+        --num_iterations_loader $num_iterations_loader \
         --verbose
     done
 done

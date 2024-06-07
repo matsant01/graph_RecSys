@@ -9,6 +9,7 @@ from torch_geometric.data import HeteroData
 os.environ['TORCH'] = torch.__version__
 
 from torch_geometric.nn import SAGEConv, to_hetero
+from torch_geometric.nn.models.basic_gnn import GAT
 from torch import Tensor
 from torch.utils.tensorboard import SummaryWriter
 
@@ -93,6 +94,7 @@ class GNN(torch.nn.Module):
         book_channels: int = 384,
         user_channels: int = 3,
         num_decoder_layers: int = 1,
+        encoder_arch: str = 'SAGE'
     ):
         """
         General Architecture used for our GNN-based recommender system.
@@ -115,7 +117,13 @@ class GNN(torch.nn.Module):
         self.book_lin = torch.nn.Linear(book_channels, conv_hidden_channels)
         
         # Define the encoder and decoder
-        self.encoder = SAGEConvEncoder(conv_hidden_channels, conv_hidden_channels, num_conv_layers)
+        if encoder_arch == 'SAGE': 
+            self.encoder = SAGEConvEncoder(conv_hidden_channels, conv_hidden_channels, num_conv_layers)
+        elif encoder_arch == 'GAT':
+             self.encoder = GAT(in_channels = -1, 
+                                hidden_channels = conv_hidden_channels, 
+                                num_layers = num_conv_layers,
+                                out_channels = conv_hidden_channels)
         self.encoder = to_hetero(self.encoder, data.metadata(), aggr='sum')
         self.decoder = EdgeDecoder(conv_hidden_channels, lin_hidden_channels, num_decoder_layers)
         
