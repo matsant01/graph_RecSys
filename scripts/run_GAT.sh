@@ -23,7 +23,7 @@ python scripts/trainer.py \
     --num_conv_layers 2 \
     --hidden_channels $hidden_channels \
     --num_decoder_layers 2 \
-    --num_epochs 2 \
+    --num_epochs 100 \
     --lr $lr \
     --sampler_type link-neighbor \
     --num_neighbors $num_neighbors \

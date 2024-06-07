@@ -220,7 +220,7 @@ class GNN(torch.nn.Module):
         """
         self.train()
         
-        for epoch in range(num_epochs):
+        for epoch in tqdm(range(num_epochs)):
             total_loss = 0
             total_examples = 0
             
@@ -293,7 +293,7 @@ class GNN(torch.nn.Module):
         """
         self.train()
         
-        for epoch in range(num_epochs):
+        for epoch in (range(num_epochs)):
             total_loss = 0
             total_examples = 0
             
@@ -319,19 +319,14 @@ class GNN(torch.nn.Module):
                     scalar_value=loss.item(),
                     global_step=epoch 
                 )
-                
-            # Update total loss and number of examples
-            total_loss += float(loss) * preds.numel()
-            total_examples += preds.numel()
-        
-        # Compute the average loss
-        avg_loss = total_loss / total_examples
-        print(f"\nEpoch {epoch + 1}/{num_epochs} - Average Train Loss: {avg_loss}")
+            
+            print(len(batch))
+            print(f"\nEpoch {epoch + 1}/{num_epochs} - Train Loss: {float(loss)}")
         
         ######################## Validate the model ########################
 
         avg_val_loss, _  = self.evaluation_full_batch(val_data, device)
-        print(f"Epoch {epoch + 1}/{num_epochs} - Average Validation Loss: {avg_val_loss}")
+        print(f"Epoch {epoch + 1}/{num_epochs} - Validation Loss: {avg_val_loss}")
         
         if writer is not None:
             writer.add_scalar(
