@@ -356,7 +356,7 @@ class GNN(torch.nn.Module):
         num_epochs: int,
         writer: SummaryWriter,
         device: torch.device,
-        val_steps: int = 500,
+        val_steps: int = 1000,
         seed: int = 42,
     ):
         """
@@ -388,7 +388,7 @@ class GNN(torch.nn.Module):
             elif isinstance(criterion, torch.nn.NLLLoss) and self.is_classifier:
                 loss = criterion(
                     input=preds,
-                    targets = (batch["user", "rates", "book"].edge_label - 1).to(torch.long)
+                    target = (batch["user", "rates", "book"].edge_label - 1).to(torch.long)
                 )
             elif isinstance(criterion, torch.nn.L1Loss) and not self.is_classifier:
                 loss = criterion(
@@ -416,7 +416,7 @@ class GNN(torch.nn.Module):
             print(len(batch))
             print(f"\nEpoch {epoch + 1}/{num_epochs} - Train Loss: {float(loss)}")
         
-            if epoch % val_steps == 0:
+            if (epoch + 1) % val_steps == 0:
                 ######################## Validate the model ########################
                 # Compute validation loss
                 avg_val_loss, predictions  = self.evaluation_full_batch(val_data, device, criterion)
