@@ -123,7 +123,8 @@ class GNN(torch.nn.Module):
              self.encoder = GAT(in_channels = -1, 
                                 hidden_channels = conv_hidden_channels, 
                                 num_layers = num_conv_layers,
-                                out_channels = conv_hidden_channels)
+                                out_channels = conv_hidden_channels,
+                                add_self_loops = False)
         self.encoder = to_hetero(self.encoder, data.metadata(), aggr='sum')
         self.decoder = EdgeDecoder(conv_hidden_channels, lin_hidden_channels, num_decoder_layers)
         
@@ -161,10 +162,10 @@ class GNN(torch.nn.Module):
                 predictions.append(preds)
                 labels.append(batch["user", "rates", "book"].edge_label.to(torch.float32))
 
-                loss = F.mse_loss(
+                loss = torch.sqrt(F.mse_loss(
                     input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
                     target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
-                )
+                ))
                 total_val_loss += float(loss) * preds.numel()
                 total_val_examples += preds.numel()
                 

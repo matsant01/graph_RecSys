@@ -40,6 +40,7 @@ def validate_arguments():
     parser.add_argument('--num_neighbors_in_sampling', type=int, help='Number of neighbors to sample in the sampling process, if applicable. Default is 25', default=25)
     parser.add_argument('--num_iterations_loader', type=int, help='Number of iterations to load the data', default=2)
     parser.add_argument('--batch_size', type=int, help='Batch size to use for training. Default is 1024', default=1024)
+    parser.add_argument('--encoder_arch', type=str, help='Either GAT or SAGE', default='SAGE')
     parser.add_argument('--verbose', action='store_true', help='Print progress messages')
     
     args = parser.parse_args()
@@ -82,6 +83,7 @@ def get_model(data: HeteroData, **kwargs):
             num_conv_layers=kwargs['num_conv_layers'],
             num_decoder_layers=kwargs['num_decoder_layers'],
             use_embedding_layers=kwargs['use_embedding_layers'],
+            encoder_arch=kwargs['encoder_arch']
         )
     elif kwargs['model_type'] == "MatrixFactorization":
         NotImplementedError("Matrix Factorization model is not implemented yet")
