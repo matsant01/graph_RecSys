@@ -8,3 +8,4 @@ output/*
 .vscode/launch.json
 src/__pycache__/*
 .vscode/*
+prev_output/*

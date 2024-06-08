@@ -32,6 +32,7 @@ def validate_arguments():
     parser.add_argument('--use_embedding_layers', action='store_true', help='Whether to use embedding layers or not')
     parser.add_argument('--num_decoder_layers', type=int, help='Number of decoder layers, if 0 the decoding will be done by a dot product')
     parser.add_argument('--num_epochs', type=int, help='Number of epochs to train the model')
+    parser.add_argument('--validation_steps', type=int, help='Number of steps between each validation. Default 500.', default=500)
     parser.add_argument('--lr', type=float, help='Learning rate for the optimizer', default=0.01)
     parser.add_argument('--loss', type=str, help='Loss function to use for training. Either "mse", "mae" or "nll"')
     parser.add_argument('--device', type=str, help='Device to use for training.')
@@ -143,6 +144,8 @@ def main(**kwargs):
         num_epochs=kwargs['num_epochs'],
         writer=writer,
         device=device,
+        output_dir=output_dir,
+        val_steps=kwargs['validation_steps'],
         seed=SEED
     )
     

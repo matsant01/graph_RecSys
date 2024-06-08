@@ -1,19 +1,18 @@
 import os
 import sys
+import json
 import pandas as pd
 from tqdm import tqdm
 
 import torch
 from torch.nn import functional as F
-import torch_geometric as pyg
 from torch_geometric.data import HeteroData
+from torch.utils.tensorboard import SummaryWriter
 
 os.environ['TORCH'] = torch.__version__
 
 from torch_geometric.nn import SAGEConv, to_hetero
 from torch_geometric.nn.models.basic_gnn import GAT
-from torch import Tensor
-from torch.utils.tensorboard import SummaryWriter
 
 sys.path.append("./.")
 
@@ -217,7 +216,7 @@ class GNN(torch.nn.Module):
         return avg_val_loss, predictions
     
 
-    def evaluation_full_batch(self, val_data, device, criterion): 
+    def evaluation_full_batch(self, val_data, device, criterion, k=5, big_k=10): 
         self.eval()
         with torch.no_grad():
             predictions = []
@@ -252,9 +251,33 @@ class GNN(torch.nn.Module):
             else:
                 predictions = torch.cat(predictions, dim=0).cpu().numpy()
 
-        return loss, predictions
+            # Compute metrics
+            results_df = pd.DataFrame([
+                {
+                    "user_id": int(user_id),
+                    "book_id": int(book_id),
+                    "rating": int(true_label),
+                    "predicted_rating": int(predicted_label),
+                }
+                for user_id, book_id, true_label, predicted_label in zip(
+                    val_data[("user", "rates", "book")].edge_label_index[0],
+                    val_data[("user", "rates", "book")].edge_label_index[1],
+                    val_data[("user", "rates", "book")].edge_label,
+                    predictions,
+                )
+            ])
 
-    
+            # Evaluate the recommendations  
+            mean_precision, mean_recall, mean_f1, map_k = evaluate_recommendations(results_df, threshold=4, k=k, n_precisions=big_k)
+            metrics = {
+                f"precision@{k}": mean_precision,
+                f"recall@{k}": mean_recall,
+                f"f1@{k}": mean_f1,
+                f"map@{big_k}": map_k,
+            }
+
+        return loss, metrics
+
     
     def train_loop(
         self,
@@ -359,6 +382,7 @@ class GNN(torch.nn.Module):
         writer: SummaryWriter,
         device: torch.device,
         val_steps: int = 1000,
+        output_dir: str = "./output",
         seed: int = 42,
     ):
         """
@@ -373,7 +397,10 @@ class GNN(torch.nn.Module):
         """
         self.train()
         
-        for epoch in (range(num_epochs)):
+        best_map_at_k = 0
+        pbar = tqdm(range(num_epochs), desc="Training")
+        
+        for epoch in pbar:
             ######################## Train one epoch ########################
             optimizer.zero_grad()
             batch = train_data.to(device)
@@ -415,14 +442,16 @@ class GNN(torch.nn.Module):
                     global_step=epoch 
                 )
             
-            print(len(batch))
-            print(f"\nEpoch {epoch + 1}/{num_epochs} - Train Loss: {float(loss)}")
+            # Update progress bar
+            pbar.set_description(f"Training - Epoch {epoch + 1}/{num_epochs} - Train Loss: {float(loss):.5f}")
         
             if (epoch + 1) % val_steps == 0:
                 ######################## Validate the model ########################
-                # Compute validation loss
-                avg_val_loss, predictions  = self.evaluation_full_batch(val_data, device, criterion)
-                print(f"Epoch {epoch + 1}/{num_epochs} - Validation Loss: {avg_val_loss}")
+                # Compute validation loss and metrics
+                k = 5
+                big_k = 15
+                avg_val_loss, metrics  = self.evaluation_full_batch(val_data, device, criterion, k=k, big_k=big_k)
+                print(f"Validation - Epoch {epoch + 1}/{num_epochs} - Val Loss: {avg_val_loss:.5f} - MAP@{big_k}: {metrics['map@{}'.format(big_k)]:.3f}")
                 
                 if writer is not None:
                     writer.add_scalar(
@@ -430,60 +459,26 @@ class GNN(torch.nn.Module):
                         scalar_value=avg_val_loss,
                         global_step=epoch
                     )
-                    
-                # Extract most likely class if the model is a classifier
-                if self.is_classifier:
-                    predictions = torch.cat(predictions, dim=0).argmax(dim=-1).cpu().numpy()
-                else:
-                    predictions = torch.cat(predictions, dim=0).cpu().numpy()
-            
-                # Compute metrics
-                k = 5
-                threshold = 4
-                big_k = 10
-
-                results_df = pd.DataFrame([
-                    {
-                        "user_id": int(user_id),
-                        "book_id": int(book_id),
-                        "rating": int(true_label),
-                        "predicted_rating": int(predicted_label),
-                    }
-                    for user_id, book_id, true_label, predicted_label in zip(
-                        val_data[("user", "rates", "book")].edge_label_index[0],
-                        val_data[("user", "rates", "book")].edge_label_index[1],
-                        val_data[("user", "rates", "book")].edge_label,
-                        predictions,
-                    )
-                ])
-
-
-                # Evaluate the recommendations  
-                mean_precision, mean_recall, mean_f1, map_k = evaluate_recommendations(results_df, threshold, k, big_k)
-                print(f"Mean Precision@{k}: {mean_precision}")
-                print(f"Mean Recall@{k}: {mean_recall}")
-                print(f"Mean F1 Score@{k}: {mean_f1}")
-                print(f"Mean Average Precision@{big_k}: {map_k}")
-                if writer is not None:
-                    writer.add_scalar(
-                        tag=f"val/precision@{k}",
-                        scalar_value=mean_precision,
-                        global_step=epoch
-                    )
-                    writer.add_scalar(
-                        tag=f"val/recall@{k}",
-                        scalar_value=mean_recall,
-                        global_step=epoch
-                    )
-                    writer.add_scalar(
-                        tag=f"val/f1@{k}",
-                        scalar_value=mean_f1,
-                        global_step=epoch
-                    )
-                    writer.add_scalar(
-                        tag=f"val/map@{big_k}",
-                        scalar_value=map_k,
-                        global_step=epoch
-                    )
+                    for metric in metrics:
+                        writer.add_scalar(
+                            tag=f"val/{metric}",
+                            scalar_value=metrics[metric],
+                            global_step=epoch
+                        )
+                        
+                # Save the model only if the MAP@k is better than the previous best
+                if metrics["map@{}".format(big_k)] > best_map_at_k:
+                    best_map_at_k = metrics["map@{}".format(big_k)]
+                    # Save model
+                    model_path = os.path.join(output_dir, "best_model.pt")
+                    torch.save(self.state_dict(), model_path)
+                    print("\tBest model updated at: {}\n".format(model_path))
+                    # Update config.json adding the best epoch value
+                    config_path = os.path.join(output_dir, "config.json")
+                    with open(config_path, "r") as f:
+                        config = json.load(f)
+                    config["best_epoch"] = epoch
+                    with open(config_path, "w") as f:
+                        json.dump(config, f)
 
                 self.train()
