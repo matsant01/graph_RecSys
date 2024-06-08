@@ -196,7 +196,7 @@ class GNN(torch.nn.Module):
                 elif isinstance(criterion, torch.nn.NLLLoss) and self.is_classifier:
                     loss = criterion(
                         input=preds,
-                        targets = (batch["user", "rates", "book"].edge_label - 1).to(torch.long)
+                        target = (batch["user", "rates", "book"].edge_label - 1).to(torch.long)
                     )
                 elif isinstance(criterion, torch.nn.L1Loss) and not self.is_classifier:
                     loss = criterion(
@@ -229,28 +229,30 @@ class GNN(torch.nn.Module):
             labels.append(batch["user", "rates", "book"].edge_label.to(torch.float32))
 
             # Loss computation
-            if isinstance(criterion, torch.nn.MSELoss) and not self.is_classifier:
-                loss = criterion(
-                    input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
-                    target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
-                )
+            if ((isinstance(criterion, torch.nn.MSELoss) and not self.is_classifier) or
+                (isinstance(criterion, torch.nn.L1Loss) and not self.is_classifier)):
+                inputs = preds.unsqueeze(-1) if preds.dim() == 1 else preds
+                targets = batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
             elif isinstance(criterion, torch.nn.NLLLoss) and self.is_classifier:
-                loss = criterion(
-                    input=preds,
-                    targets = (batch["user", "rates", "book"].edge_label - 1).to(torch.long)
-                )
-            elif isinstance(criterion, torch.nn.L1Loss) and not self.is_classifier:
-                loss = criterion(
-                    input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
-                    target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
-                )
+                inputs = preds
+                targets = (batch["user", "rates", "book"].edge_label - 1).to(torch.long)
+            elif criterion is None:
+                pass
             else:
                 raise ValueError("Criterion {} not supported with model {}being a classifier".format(
                     criterion.__class__.__name__, 
                     "" if self.is_classifier else "not ",
                 ))
 
-        return loss.item(), predictions
+            loss = criterion(input=inputs, target=targets).item() if criterion is not None else 0
+            
+            # Prepare predictions (sampling in case of multi-class classification)
+            if self.is_classifier:
+                predictions = torch.cat(predictions, dim=0).argmax(dim=-1).cpu().numpy()
+            else:
+                predictions = torch.cat(predictions, dim=0).cpu().numpy()
+
+        return loss, predictions
 
     
     
@@ -299,7 +301,7 @@ class GNN(torch.nn.Module):
                 elif isinstance(criterion, torch.nn.NLLLoss) and self.is_classifier:
                     loss = criterion(
                         input=preds,
-                        targets = (batch["user", "rates", "book"].edge_label - 1).to(torch.long)
+                        target = (batch["user", "rates", "book"].edge_label - 1).to(torch.long)
                     )
                 elif isinstance(criterion, torch.nn.L1Loss) and not self.is_classifier:
                     loss = criterion(
