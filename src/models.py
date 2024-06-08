@@ -172,49 +172,81 @@ class GNN(torch.nn.Module):
         return self.decoder(x_dict, data["user", "rates", "book"].edge_label_index)
     
     
-    def evaluation(self, val_loader, device, criterion): 
+    def evaluation_batched(self, val_loader, device, criterion, k=5, big_k=10): 
         self.eval()
         with torch.no_grad():
+            val_predictions = []
+            val_labels = []
+            val_edge_label_index = []
             total_val_loss = 0
-            total_val_examples = 0
-            predictions = []
-            labels = []
+            total_val_samples = 0
+            
             for i, batch in tqdm(enumerate(val_loader), desc=f"Validation", total=len(val_loader)):
                 batch = batch.to(device)
                 preds = self.forward(batch)
                 
-                predictions.append(preds)
-                labels.append(batch["user", "rates", "book"].edge_label.to(torch.float32))
-
                 # Loss computation
-                if isinstance(criterion, torch.nn.MSELoss) and not self.is_classifier:
-                    loss = criterion(
-                        input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
-                        target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
-                    )
+                if ((isinstance(criterion, torch.nn.MSELoss) and not self.is_classifier) or
+                    (isinstance(criterion, torch.nn.L1Loss) and not self.is_classifier)):
+                    inputs = preds.unsqueeze(-1) if preds.dim() == 1 else preds
+                    targets = batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
                 elif isinstance(criterion, torch.nn.NLLLoss) and self.is_classifier:
-                    loss = criterion(
-                        input=preds,
-                        target = (batch["user", "rates", "book"].edge_label - 1).to(torch.long)
-                    )
-                elif isinstance(criterion, torch.nn.L1Loss) and not self.is_classifier:
-                    loss = criterion(
-                        input=preds.unsqueeze(-1) if preds.dim() == 1 else preds,
-                        target=batch["user", "rates", "book"].edge_label.to(torch.float32).unsqueeze(-1)
-                    )
+                    inputs = preds
+                    targets = (batch["user", "rates", "book"].edge_label - 1).to(torch.long)
+                elif criterion is None:
+                    pass
                 else:
                     raise ValueError("Criterion {} not supported with model {}being a classifier".format(
                         criterion.__class__.__name__, 
                         "" if self.is_classifier else "not ",
                     ))
-                
-                total_val_loss += float(loss) * preds.numel()
-                total_val_examples += preds.numel()
-                
-            avg_val_loss = total_val_loss / total_val_examples
 
-        return avg_val_loss, predictions
-    
+                loss = criterion(input=inputs, target=targets).item() if criterion is not None else -1
+                total_val_loss += float(loss) * preds.numel()
+                total_val_samples += preds.numel()
+                
+                val_predictions.append(preds)
+                val_labels.append(batch["user", "rates", "book"].edge_label.to(torch.float32))
+                val_edge_label_index.append(batch["user", "rates", "book"].edge_label_index)
+                
+            # Compute the average loss
+            loss = total_val_loss / total_val_samples
+                
+            # Prepare val_predictions (sampling in case of multi-class classification)
+            val_labels = torch.cat(val_labels, dim=0).cpu().numpy()
+            val_edge_label_index = torch.cat(val_edge_label_index, dim=1)
+            if self.is_classifier:
+                val_predictions = torch.cat(val_predictions, dim=0).argmax(dim=-1).cpu().numpy()
+            else:
+                val_predictions = torch.cat(val_predictions, dim=0).cpu().numpy()
+
+            # Compute metrics
+            results_df = pd.DataFrame([
+                {
+                    "user_id": int(user_id),
+                    "book_id": int(book_id),
+                    "rating": int(true_label),
+                    "predicted_rating": int(predicted_label),
+                }
+                for user_id, book_id, true_label, predicted_label in zip(
+                    val_edge_label_index[0],
+                    val_edge_label_index[1],
+                    val_labels,
+                    val_predictions,
+                )
+            ])
+
+            # Evaluate the recommendations  
+            mean_precision, mean_recall, mean_f1, map_k = evaluate_recommendations(results_df, threshold=4, k=k, n_precisions=big_k)
+            metrics = {
+                f"precision@{k}": mean_precision,
+                f"recall@{k}": mean_recall,
+                f"f1@{k}": mean_f1,
+                f"map@{big_k}": map_k,
+            }
+
+        return loss, metrics
+
 
     def evaluation_full_batch(self, val_data, device, criterion, k=5, big_k=10): 
         self.eval()
@@ -279,7 +311,7 @@ class GNN(torch.nn.Module):
         return loss, metrics
 
     
-    def train_loop(
+    def train_loop_batched(
         self,
         train_loader,
         val_loader,
@@ -288,33 +320,40 @@ class GNN(torch.nn.Module):
         num_epochs: int,
         writer: SummaryWriter,
         device: torch.device,
+        val_steps: int = -1,
+        output_dir: str = "./output",
         seed: int = 42,
     ):
         """
-        Train the model using the given data and optimizer while logging the training process.
-        Validation is performed at the end of each epoch.
-        :param data: HeteroData containing the graph
-        :param optimizer: Optimizer to use for training
+        Train the model using the data loaders and optimizer while logging the training process.
+        Validation is performed every val_steps steps.
+        :param train_loader: DataLoader containing the training data
+        :param val_data: HeteroData containing the validation data
         :param criterion: Loss function to use for training
+        :param optimizer: Optimizer to use for training
         :param num_epochs: Number of epochs to train the model
         :param writer: SummaryWriter to log the training process
         :param device: Device to use for training
+        :param val_steps: Number of steps between each validation. If -1, validation is performed at the end of each epoch
+        :param output_dir: Directory where to save the model
         """
         self.train()
         
-        for epoch in tqdm(range(num_epochs)):
-            total_loss = 0
-            total_examples = 0
+        best_map_at_k = 0
+        if val_steps == -1:
+            val_steps = len(train_loader)
+        
+        for epoch in range(num_epochs):
+            pbar = tqdm(enumerate(train_loader), desc=f"Training - Epoch {epoch + 1}/{num_epochs} - Loss: 0", total=len(train_loader))
             
-            ######################## Train one epoch ########################
-            torch.manual_seed(seed + epoch) # Ensure reproducibility, but with different seeds for each epoch
-            for i, batch in tqdm(enumerate(train_loader), desc=f"Training Epoch {epoch + 1}/{num_epochs}", total=len(train_loader)):
+            for i, batch in pbar:
+                ######################## Train one epoch ########################
                 optimizer.zero_grad()
                 batch = batch.to(device)
                 
                 # Forward pass
                 preds = self.forward(batch)
-                
+
                 # Loss computation
                 if isinstance(criterion, torch.nn.MSELoss) and not self.is_classifier:
                     loss = criterion(
@@ -346,30 +385,50 @@ class GNN(torch.nn.Module):
                     writer.add_scalar(
                         tag="train/loss",
                         scalar_value=loss.item(),
-                        global_step=epoch * len(train_loader) + i
+                        global_step=epoch * len(train_loader) + i 
                     )
+                
+                # Update progress bar
+                pbar.set_description(f"Training - Epoch {epoch + 1}/{num_epochs} - Loss: {float(loss):.5f}")
+            
+                if (i + 1) % val_steps == 0:
+                    ######################## Validate the model ########################
+                    # Compute validation loss and metrics
+                    k = 5
+                    big_k = 15
+                    avg_val_loss, metrics  = self.evaluation_batched(val_loader, device, criterion, k=k, big_k=big_k)
+                    print(f"Validation - Epoch {epoch + 1}/{num_epochs} - Val Loss: {avg_val_loss:.5f} - MAP@{big_k}: {metrics['map@{}'.format(big_k)]:.3f}")
                     
-                # Update total loss and number of examples
-                total_loss += float(loss) * preds.numel()
-                total_examples += preds.numel()
-            
-            # Compute the average loss
-            avg_loss = total_loss / total_examples
-            print(f"\nEpoch {epoch + 1}/{num_epochs} - Average Train Loss: {avg_loss}")
-            
-            ######################## Validate the model ########################
+                    if writer is not None:
+                        writer.add_scalar(
+                            tag="val/loss",
+                            scalar_value=avg_val_loss,
+                            global_step=epoch
+                        )
+                        for metric in metrics:
+                            writer.add_scalar(
+                                tag=f"val/{metric}",
+                                scalar_value=metrics[metric],
+                                global_step=epoch
+                            )
+                            
+                    # Save the model only if the MAP@k is better than the previous best
+                    if metrics["map@{}".format(big_k)] > best_map_at_k:
+                        best_map_at_k = metrics["map@{}".format(big_k)]
+                        # Save model
+                        model_path = os.path.join(output_dir, "best_model.pt")
+                        torch.save(self.state_dict(), model_path)
+                        print("\tBest model updated at: {}\n".format(model_path))
+                        # Update config.json adding the best epoch value
+                        config_path = os.path.join(output_dir, "config.json")
+                        with open(config_path, "r") as f:
+                            config = json.load(f)
+                        config["best_step"] = epoch * len(train_loader) + i
+                        with open(config_path, "w") as f:
+                            json.dump(config, f)
 
-            avg_val_loss, _  = self.evaluation(val_loader, device)
-            print(f"Epoch {epoch + 1}/{num_epochs} - Average Validation Loss: {avg_val_loss}")
-            
-            if writer is not None:
-                writer.add_scalar(
-                    tag="val/loss",
-                    scalar_value=avg_val_loss,
-                    global_step=epoch
-                )
+                    self.train()
 
-            self.train()
         
 
     def train_loop_full_batch(

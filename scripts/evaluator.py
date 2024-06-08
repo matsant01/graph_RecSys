@@ -33,7 +33,7 @@ def load_model(model_folder, full_data, config):
                     num_decoder_layers=config['num_decoder_layers'],
                     use_embedding_layers=config['use_embedding_layers'])
 
-    model_folder = os.path.join(model_folder, 'model.pt')
+    model_folder = os.path.join(model_folder, 'best_model.pt')
     model.load_state_dict(torch.load(model_folder))
     model.eval()
     return model
@@ -65,42 +65,47 @@ def load_data(test_data,  config):
 
     return test_data
 
-def compute_save_metrics(test_data, predictions, model_folder):
-    threshold = 4
-    K = 10
-    k = 5
+# def compute_save_metrics(test_data, predictions, model_folder):
+#     threshold = 4
+#     K = 10
+#     k = 5
 
-    test_data['predicted_rating'] = predictions
-    # Evaluate the recommendations  
-    mean_precision, mean_recall, mean_f1, map_k = evaluate_recommendations(test_data, threshold, k, K)
-    print(f"Mean Precision@{k}: {mean_precision}")
-    print(f"Mean Recall@{k}: {mean_recall}")
-    print(f"Mean F1 Score@{k}: {mean_f1}")
-    print(f"Mean Average Precision@{K}: {map_k}")
+#     test_data['predicted_rating'] = predictions
+#     # Evaluate the recommendations  
+#     mean_precision, mean_recall, mean_f1, map_k = evaluate_recommendations(test_data, threshold, k, K)
+#     print(f"Mean Precision@{k}: {mean_precision}")
+#     print(f"Mean Recall@{k}: {mean_recall}")
+#     print(f"Mean F1 Score@{k}: {mean_f1}")
+#     print(f"Mean Average Precision@{K}: {map_k}")
 
-    metrics = {
-        f"Mean Precision@{k}": mean_precision,
-        f"Mean Recall@{k}": mean_recall,
-        f"Mean F1 Score@{k}": mean_f1,
-        f"Mean Average Precision@{K}": map_k
-    }
+#     metrics = {
+#         f"Mean Precision@{k}": mean_precision,
+#         f"Mean Recall@{k}": mean_recall,
+#         f"Mean F1 Score@{k}": mean_f1,
+#         f"Mean Average Precision@{K}": map_k
+#     }
 
-    with open(os.path.join(model_folder, 'metrics.json'), 'w') as f:
-        json.dump(metrics, f, indent=4)
+#     with open(os.path.join(model_folder, 'metrics.json'), 'w') as f:
+#         json.dump(metrics, f, indent=4)
     
-    test_data.to_csv(os.path.join(model_folder, 'predictions.csv'))
+#     test_data.to_csv(os.path.join(model_folder, 'predictions.csv'))
 
-def evaluate_model_in_folder(model_folder, test_data, full_data, test_data_csv): 
+def evaluate_model_in_folder(model_folder, test_data, full_data): 
 
     config = json.load(open(os.path.join(model_folder, 'config.json')))
     test_loader = load_data(test_data, config)
 
     model = load_model(model_folder, full_data, config).to(device)
-    _, predictions = model.evaluation_full_batch(test_loader, device, criterion=None)
+    _, metrics = model.evaluation_full_batch(val_data=test_loader, device=device, criterion=None, k=5, big_k=15)
 
     print(config)
-    compute_save_metrics(test_data_csv, predictions, model_folder)
-
+    for key, value in sorted(metrics.items()):
+        print(f"{key}: {value}")
+    print("\n\n")
+    
+    with open(os.path.join(model_folder, 'metrics.json'), 'w') as f:
+        json.dump(metrics, f, indent=4)
+    
 
 def main(args, device):
 
@@ -112,11 +117,11 @@ def main(args, device):
     test_data_csv = pd.read_csv(os.path.join(data_folder, "test.csv"))
     full_data = torch.load(os.path.join(data_folder, "data_hetero.pt")).to(device)
 
-    print(os.path.join(model_folder, 'model.pt'))
+    model_path = os.path.join(model_folder, 'best_model.pt')
+    print(model_path)
 
-    if os.path.exists(os.path.join(model_folder, 'model.pt')):
+    if os.path.exists(model_path):
         evaluate_model_in_folder(model_folder, test_data, full_data, test_data_csv)
-
     else: 
         # iterate over all the model folders
         for model_dir in os.listdir(model_folder):
@@ -124,10 +129,10 @@ def main(args, device):
 
             print(model_dir)
             # only consider folders with model.pt file
-            if not os.path.exists(os.path.join(model_dir, 'model.pt')):
+            if not os.path.exists(os.path.join(model_dir, 'best_model.pt')):
                 continue
 
-            evaluate_model_in_folder(model_dir, test_data, full_data, test_data_csv)
+            evaluate_model_in_folder(model_dir, test_data, full_data)
         
 
 

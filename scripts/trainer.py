@@ -29,10 +29,13 @@ def validate_arguments():
     parser.add_argument('--output_dir', type=str, help='Root folder where model, logs and config will be saved')
     parser.add_argument('--num_conv_layers', type=int, help='Number of SAGE convolutional layers')
     parser.add_argument('--hidden_channels', type=int, help='Number of hidden channels in the SAGE convolutional layers')
+    parser.add_argument('--sampler_type', type=str, help='Type of sampler to use to create batches. Either "link-neighbor", "HGT" or "none". Default is "none"', default='none')
+    parser.add_argument('--num_neighbors_in_sampling', type=int, help='Number of neighbors to sample in the sampling process, if applicable. Default is 32', default=32)
+    parser.add_argument('--batch_size', type=int, help='Batch size to use for training. Default is 1024', default=1024)
     parser.add_argument('--use_embedding_layers', action='store_true', help='Whether to use embedding layers or not')
     parser.add_argument('--num_decoder_layers', type=int, help='Number of decoder layers, if 0 the decoding will be done by a dot product')
     parser.add_argument('--num_epochs', type=int, help='Number of epochs to train the model')
-    parser.add_argument('--validation_steps', type=int, help='Number of steps between each validation. Default 500.', default=500)
+    parser.add_argument('--validation_steps', type=int, help='Number of steps between each validation. Default is -1 (every epoch)', default=-1)
     parser.add_argument('--lr', type=float, help='Learning rate for the optimizer', default=0.01)
     parser.add_argument('--loss', type=str, help='Loss function to use for training. Either "mse", "mae" or "nll"')
     parser.add_argument('--device', type=str, help='Device to use for training.')
@@ -61,8 +64,7 @@ def validate_arguments():
         try:
             tmp_device = torch.device(args.device)
         except:
-            raise ValueError("Device {} is not valid".format(args.device))
-        
+            raise ValueError("Device {} is not valid".format(args.device)) 
     return args
     
 
@@ -90,11 +92,39 @@ def main(**kwargs):
         print("Loading data...")
     
     # Load data
-    train_data = torch.load(os.path.join(kwargs['data_path'], "train_hetero.pt"))
-    val_data = torch.load(os.path.join(kwargs['data_path'], "val_hetero.pt"))
-    test_data = torch.load(os.path.join(kwargs['data_path'], "test_hetero.pt"))
     data = torch.load(os.path.join(kwargs['data_path'], "data_hetero.pt"))
+    val_data = torch.load(os.path.join(kwargs['data_path'], "val_hetero.pt"))
+    train_data = torch.load(os.path.join(kwargs['data_path'], "train_hetero.pt"))
     
+    if kwargs['sampler_type'] == "none":
+        train_loader = None
+        val_loader = None
+    elif kwargs['sampler_type'] == "link-neighbor":
+        train_loader = LinkNeighborLoader(
+            train_data,
+            num_neighbors=[kwargs['num_neighbors_in_sampling']] * 2,
+            edge_label=train_data["user", "rates", "book"].edge_label,
+            edge_label_index=(("user", "rates", "book"), train_data["user", "rates", "book"].edge_label_index),
+            batch_size=kwargs['batch_size'],
+            shuffle=True
+        )
+        val_loader = LinkNeighborLoader(
+            val_data,
+            num_neighbors=[kwargs['num_neighbors_in_sampling']] * 2,
+            edge_label=val_data["user", "rates", "book"].edge_label,
+            edge_label_index=(("user", "rates", "book"), val_data["user", "rates", "book"].edge_label_index),
+            batch_size=kwargs['batch_size'],
+            shuffle=True
+        )
+    elif kwargs['sampler_type'] == "HGT":
+        train_loader = HGTLoader(
+            train_data,
+            num_samples=[kwargs['num_neighbors_in_sampling']] * 2,
+            batch_size=kwargs['batch_size'],
+            shuffle=True
+        )
+    else:
+        raise ValueError("Sampler type {} is not valid".format(kwargs['sampler_type']))
     
     if kwargs['verbose']:
         print("\nData loaded successfully")
@@ -136,18 +166,32 @@ def main(**kwargs):
         print("\n\nStarting training...\n")
     
     # Start training
-    model.train_loop_full_batch(
-        train_data,
-        val_data,
-        criterion=loss,
-        optimizer=optimizer,
-        num_epochs=kwargs['num_epochs'],
-        writer=writer,
-        device=device,
-        output_dir=output_dir,
-        val_steps=kwargs['validation_steps'],
-        seed=SEED
-    )
+    if train_loader is None:
+        model.train_loop_full_batch(
+            train_data,
+            val_data,
+            criterion=loss,
+            optimizer=optimizer,
+            num_epochs=kwargs['num_epochs'],
+            writer=writer,
+            device=device,
+            output_dir=output_dir,
+            val_steps=kwargs['validation_steps'],
+            seed=SEED
+        )
+    else:
+        model.train_loop_batched(
+            train_loader,
+            val_loader,
+            criterion=loss,
+            optimizer=optimizer,
+            num_epochs=kwargs['num_epochs'],
+            writer=writer,
+            device=device,
+            output_dir=output_dir,
+            val_steps=kwargs['validation_steps'],
+            seed=SEED
+        )
     
     # Save model
     if kwargs['verbose']:
