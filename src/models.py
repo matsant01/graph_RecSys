@@ -250,6 +250,7 @@ class GNN(torch.nn.Module):
 
     def evaluation_full_batch(self, val_data, device, criterion, k=5, big_k=10): 
         self.eval()
+        print("Validating...")
         with torch.no_grad():
             predictions = []
             labels = []
@@ -314,7 +315,7 @@ class GNN(torch.nn.Module):
     def train_loop_batched(
         self,
         train_loader,
-        val_loader,
+        val_data,
         criterion,
         optimizer: torch.optim.Optimizer,
         num_epochs: int,
@@ -340,13 +341,16 @@ class GNN(torch.nn.Module):
         self.train()
         
         best_map_at_k = 0
-        if val_steps == -1:
-            val_steps = len(train_loader)
+        if val_steps < 0:
+            val_steps = abs(val_steps) * len(train_loader)
+            print("Validation steps set to {}".format(val_steps))
         
         for epoch in range(num_epochs):
             pbar = tqdm(enumerate(train_loader), desc=f"Training - Epoch {epoch + 1}/{num_epochs} - Loss: 0", total=len(train_loader))
             
             for i, batch in pbar:
+                curr_step = epoch * len(train_loader) + i
+                
                 ######################## Train one epoch ########################
                 optimizer.zero_grad()
                 batch = batch.to(device)
@@ -385,18 +389,18 @@ class GNN(torch.nn.Module):
                     writer.add_scalar(
                         tag="train/loss",
                         scalar_value=loss.item(),
-                        global_step=epoch * len(train_loader) + i 
+                        global_step=curr_step,
                     )
                 
                 # Update progress bar
                 pbar.set_description(f"Training - Epoch {epoch + 1}/{num_epochs} - Loss: {float(loss):.5f}")
             
-                if (i + 1) % val_steps == 0:
+                if curr_step % val_steps == 0 and curr_step > 0:
                     ######################## Validate the model ########################
                     # Compute validation loss and metrics
                     k = 5
                     big_k = 15
-                    avg_val_loss, metrics  = self.evaluation_batched(val_loader, device, criterion, k=k, big_k=big_k)
+                    avg_val_loss, metrics  = self.evaluation_full_batch(val_data, device, criterion, k=k, big_k=big_k)
                     print(f"Validation - Epoch {epoch + 1}/{num_epochs} - Val Loss: {avg_val_loss:.5f} - MAP@{big_k}: {metrics['map@{}'.format(big_k)]:.3f}")
                     
                     if writer is not None:
@@ -423,7 +427,7 @@ class GNN(torch.nn.Module):
                         config_path = os.path.join(output_dir, "config.json")
                         with open(config_path, "r") as f:
                             config = json.load(f)
-                        config["best_step"] = epoch * len(train_loader) + i
+                        config["best_step"] = curr_step
                         with open(config_path, "w") as f:
                             json.dump(config, f)
 

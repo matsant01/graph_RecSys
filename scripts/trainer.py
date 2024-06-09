@@ -35,7 +35,7 @@ def validate_arguments():
     parser.add_argument('--use_embedding_layers', action='store_true', help='Whether to use embedding layers or not')
     parser.add_argument('--num_decoder_layers', type=int, help='Number of decoder layers, if 0 the decoding will be done by a dot product')
     parser.add_argument('--num_epochs', type=int, help='Number of epochs to train the model')
-    parser.add_argument('--validation_steps', type=int, help='Number of steps between each validation. Default is -1 (every epoch)', default=-1)
+    parser.add_argument('--validation_steps', type=int, help='Number of steps between each validation. If set to a negative value, will be interpreted as -number of epochs. Default is -1 (every epoch)', default=-1)
     parser.add_argument('--lr', type=float, help='Learning rate for the optimizer', default=0.01)
     parser.add_argument('--loss', type=str, help='Loss function to use for training. Either "mse", "mae" or "nll"')
     parser.add_argument('--device', type=str, help='Device to use for training.')
@@ -98,21 +98,12 @@ def main(**kwargs):
     
     if kwargs['sampler_type'] == "none":
         train_loader = None
-        val_loader = None
     elif kwargs['sampler_type'] == "link-neighbor":
         train_loader = LinkNeighborLoader(
             train_data,
-            num_neighbors=[kwargs['num_neighbors_in_sampling']] * 2,
+            num_neighbors=[kwargs['num_neighbors_in_sampling']] * kwargs['num_conv_layers'],
             edge_label=train_data["user", "rates", "book"].edge_label,
             edge_label_index=(("user", "rates", "book"), train_data["user", "rates", "book"].edge_label_index),
-            batch_size=kwargs['batch_size'],
-            shuffle=True
-        )
-        val_loader = LinkNeighborLoader(
-            val_data,
-            num_neighbors=[kwargs['num_neighbors_in_sampling']] * 2,
-            edge_label=val_data["user", "rates", "book"].edge_label,
-            edge_label_index=(("user", "rates", "book"), val_data["user", "rates", "book"].edge_label_index),
             batch_size=kwargs['batch_size'],
             shuffle=True
         )
@@ -182,7 +173,7 @@ def main(**kwargs):
     else:
         model.train_loop_batched(
             train_loader,
-            val_loader,
+            val_data,
             criterion=loss,
             optimizer=optimizer,
             num_epochs=kwargs['num_epochs'],

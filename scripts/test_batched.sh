@@ -4,16 +4,17 @@ hidden_channels=256
 lr=0.00025
 
 python scripts/trainer.py \
-    --data_path ./data/splitted_data \
+    --data_path ./data/splitted_data_updated \
     --output_dir ./output \
     --num_conv_layers $num_conv_layers \
     --hidden_channels $hidden_channels \
     --num_decoder_layers 3 \
     --sampler_type link-neighbor \
-    --num_epochs 10 \
+    --num_epochs 50 \
     --batch_size 4096 \
     --encoder_arch $encoder_arch \
+    --validation_steps -1 \
     --lr $lr \
     --loss mse \
-    --device cuda:0 \
+    --device cuda:1 \
     --verbose
