@@ -31,20 +31,46 @@ class LoadData:
         self.device = device
 
 
-    def compute_books_embeddings(self,df_books):
-
+    def compute_books_embeddings(self, df_books, include_authors=True):
+        """
+        Computes the sentence embeddings for the book titles and authors, to be used as node features in the graph.
+        :param df_books: DataFrame with the books data
+        :param include_authors: Boolean to include authors in the embeddings (to set to false if authors are separate nodes of the graph)
+        :return: torch.tensor with the embeddings
+        """
+        
         model = SentenceTransformer('all-MiniLM-L6-v2', device=self.device)
 
-        df_books["text_to_embed"] = "Title: " + df_books["title"] + " Authors: " + df_books["authors"]
+        df_books["text_to_embed"] = "Title: " + df_books["title"]
+        if include_authors:
+            df_books["text_to_embed"] = df_books["text_to_embed"] + " Authors: " + df_books["authors"]
         with torch.no_grad():
-            titles_emb = model.encode(df_books['text_to_embed'].values, device=self.device, show_progress_bar=True, batch_size=32)
+            titles_emb = model.encode(df_books['text_to_embed'].values, device=self.device, show_progress_bar=True, batch_size=128)
             
         del model
         torch.cuda.empty_cache()    
 
         books_features = torch.tensor(titles_emb)
-        # print("Books features shape:", books_features.shape)
         return books_features
+    
+    
+    def compute_authors_embeddings(self, df_books):
+        """
+        Computes the sentence embeddings for the authors to be used as node features in the graph.
+        :param df_books: DataFrame with the books data
+        :return: torch.tensor with the embeddings
+        """
+        
+        model = SentenceTransformer('all-MiniLM-L6-v2', device=self.device)
+
+        with torch.no_grad():
+            authors_emb = model.encode(df_books['single_authors'].unique(), device=self.device, show_progress_bar=True, batch_size=128)
+            
+        del model
+        torch.cuda.empty_cache()    
+
+        authors_features = torch.tensor(authors_emb)
+        return authors_features
     
     def compute_user_embeddings(self,df_ratings):
         B = nx.Graph()
@@ -130,10 +156,8 @@ class LoadData:
         ratings_book_merged = self.map_user_book_ids(ratings_book_merged)
 
         data = HeteroData()
-        # data['user'].x = ratings_book_merged['mapped_user_id'].unique()  # [num_users]
-        # data['book'].x = books_features.clone().detach().float() # (num_books, num_books_features)
-        data['user'].x = ratings_book_merged['mapped_user_id'].unique()  # [num_users]
-        data['book'].x = ratings_book_merged['mapped_book_id'].unique()  # [num_books]
+        data['user'].x = torch.tensor(users_features).detach().to(torch.float32)  # [num_users]
+        data['book'].x = books_features.clone().detach().to(torch.float32) # (num_books, num_books_features)
 
         data['user', 'rates', 'book'].edge_index = self.build_edge_index(ratings_book_merged['mapped_user_id'], ratings_book_merged['mapped_book_id'])
         rating = torch.from_numpy(ratings_book_merged['rating'].values).float()
@@ -144,11 +168,12 @@ class LoadData:
         expanded_df = ratings_book_merged.explode('single_authors', ignore_index=True)
         int_array = self.encode_string_array(expanded_df['single_authors'])
         data['book', 'by', 'author'].edge_index = self.build_edge_index(expanded_df['mapped_book_id'].values, int_array)
-        data['author'].x = torch.tensor(np.unique(int_array))
+        data['author'].x = self.compute_authors_embeddings(expanded_df)
+        assert data['author'].x.shape[0] == max(data['book', 'by', 'author'].edge_index[1] + 1)
 
         int_array = self.encode_string_array(ratings_book_merged['language_code'])
         data['book', 'written_in', 'language'].edge_index = self.build_edge_index(ratings_book_merged['mapped_book_id'].values, int_array)
-        data['language'].x = torch.tensor(np.unique(int_array))
+        data['language'].x = torch.nn.functional.one_hot(torch.tensor(np.unique(int_array)), num_classes=len(np.unique(int_array)))
 
         # We also need to make sure to add the reverse edges from books to users
         # in order to let a GNN be able to pass messages in both directions.
@@ -167,7 +192,7 @@ class LoadData:
     def split_hetero(self, data):
         ## designed for transductive learning
         tfs = RandomLinkSplit(is_undirected=True, 
-                            num_val=0.1,
+                            num_val=0.05,
                             num_test=0.1,
                             neg_sampling_ratio=0.0,
                             add_negative_train_samples=False,
@@ -210,7 +235,7 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     loader = LoadData(book_path, ratings_path, device)
-    books_features = loader.compute_books_embeddings(loader.df_books)
+    books_features = loader.compute_books_embeddings(loader.df_books, include_authors=False)
     users_features = loader.compute_user_embeddings(loader.df_ratings)
     data = loader.create_hetero_graph(books_features, users_features)
 

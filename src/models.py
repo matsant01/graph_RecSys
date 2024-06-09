@@ -33,19 +33,19 @@ class SAGEConvEncoder(torch.nn.Module):
             self.convs.append(SAGEConv((-1, -1), hidden_channels))
         self.convs.append(SAGEConv((-1, -1), out_channels))
 
-    def forward(self, x_dict, edge_index):
+    def forward(self, x_dict, edge_index_dict):
         """
         Forward pass of the model.
         :param x_dict: Input features
-        :param edge_index: Edge index tensor
+        :param edge_index_dict: Edge index tensor
         """
-        # Takes the edge_index (not the edge_label_index) as input, and performs
+        # Takes the edge_index_dict (subgraph) and x_dict (features) as input and performs
         # message passing on the graph.
         for i, conv in enumerate(self.convs):
             if i != len(self.convs) - 1:
-                x_dict = conv(x_dict, edge_index).relu()
+                x_dict = conv(x_dict, edge_index_dict).relu()
             else:
-                x_dict = conv(x_dict, edge_index)
+                x_dict = conv(x_dict, edge_index_dict)
         return x_dict
 
 class EdgeDecoder(torch.nn.Module):
@@ -107,6 +107,8 @@ class GNN(torch.nn.Module):
         use_embedding_layers: bool = False,
         book_channels: int = 384,
         user_channels: int = 3,
+        author_channels: int = 384,
+        language_channels: int = 26,
         num_decoder_layers: int = 1,
         encoder_arch: str = 'SAGE',
         out_dim: int = 1,
@@ -135,6 +137,21 @@ class GNN(torch.nn.Module):
         self.user_lin = torch.nn.Linear(user_channels, conv_hidden_channels)
         self.book_lin = torch.nn.Linear(book_channels, conv_hidden_channels)
         
+        # Check if node types "author" and "language" exist as well, and if so add linear layers for them too
+        if "author" in data.metadata()[0]:
+            self.author_lin = torch.nn.Linear(author_channels, conv_hidden_channels)
+            if use_embedding_layers:
+                raise NotImplementedError("Embedding layers are not supported yet unless you're using only book and user nodes.")
+        else:
+            self.author_lin = None
+            
+        if "language" in data.metadata()[0]:
+            self.language_lin = torch.nn.Linear(language_channels, conv_hidden_channels)
+            if use_embedding_layers:
+                raise NotImplementedError("Embedding layers are not supported yet unless you're using only book and user nodes.")
+        else:
+            self.language_lin = None
+        
         # Define the encoder and decoder
         if encoder_arch == 'SAGE': 
             self.encoder = SAGEConvEncoder(conv_hidden_channels, conv_hidden_channels, num_conv_layers)
@@ -144,6 +161,7 @@ class GNN(torch.nn.Module):
                                 num_layers = num_conv_layers,
                                 out_channels = conv_hidden_channels,
                                 add_self_loops = False)
+             
         self.encoder = to_hetero(self.encoder, data.metadata(), aggr='sum')
         self.decoder = EdgeDecoder(
             input_channels=conv_hidden_channels,
@@ -157,13 +175,18 @@ class GNN(torch.nn.Module):
         Forward pass of the model.
         :param data: HeteroData containing the graph or a subgraph obtained from it by sampling.
         """
-        
-        # Create the feature matrices for the user and book nodes by combining embeddings
-        # and linearly transformed features
+        # Add the basic node types, with embdeddings if specified
         x_dict = {
             "user": self.user_lin(data["user"].x) + self.user_emb(data["user"].n_id) if self.use_embedding_layers else self.user_lin(data["user"].x),
             "book": self.book_lin(data["book"].x) + self.book_emb(data["book"].n_id) if self.use_embedding_layers else self.book_lin(data["book"].x),
         }
+            
+        # Add more node types if they exist
+        if self.author_lin is not None:
+            x_dict["author"] = self.author_lin((data["author"].x).to(torch.float32))
+        if self.language_lin is not None:
+            x_dict["language"] = self.language_lin((data["language"].x).to(torch.float32))
+
         
         # Perform message passing on the graph
         x_dict = self.encoder(x_dict, data.edge_index_dict)

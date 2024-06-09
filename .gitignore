@@ -1,11 +1,12 @@
 venv/*
-data/splitted_data/*
+data/*
 venv/*
 __pycache__/*
 */__pycache__/
 */__pycache__/*
 output/*
+output_*/*
 .vscode/launch.json
 src/__pycache__/*
 .vscode/*
-full_batch_output/*
+*/figures/*
