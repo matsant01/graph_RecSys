@@ -11,6 +11,7 @@ from sentence_transformers import SentenceTransformer
 from torch_geometric.transforms import RandomLinkSplit
 import numpy as np
 import argparse
+import os
 
 
 # make result reproducible
@@ -148,7 +149,7 @@ class LoadData:
         return edge_index
 
 
-    def create_hetero_graph(self, books_features, users_features): 
+    def create_hetero_graph(self, books_features, users_features, add_data): 
 
         ratings_book_merged = pd.merge(self.df_ratings, self.df_books, on='book_id')
 
@@ -163,17 +164,18 @@ class LoadData:
         rating = torch.from_numpy(ratings_book_merged['rating'].values).float()
         data['user', 'rates', 'book'].edge_label = rating  # [num_ratings]
 
-        # Split the 'authors' column into lists
-        ratings_book_merged['single_authors'] = ratings_book_merged['authors'].str.split(', ').copy()
-        expanded_df = ratings_book_merged.explode('single_authors', ignore_index=True)
-        int_array = self.encode_string_array(expanded_df['single_authors'])
-        data['book', 'by', 'author'].edge_index = self.build_edge_index(expanded_df['mapped_book_id'].values, int_array)
-        data['author'].x = self.compute_authors_embeddings(expanded_df)
-        assert data['author'].x.shape[0] == max(data['book', 'by', 'author'].edge_index[1] + 1)
+        if add_data:
+            # Split the 'authors' column into lists
+            ratings_book_merged['single_authors'] = ratings_book_merged['authors'].str.split(', ').copy()
+            expanded_df = ratings_book_merged.explode('single_authors', ignore_index=True)
+            int_array = self.encode_string_array(expanded_df['single_authors'])
+            data['book', 'by', 'author'].edge_index = self.build_edge_index(expanded_df['mapped_book_id'].values, int_array)
+            data['author'].x = self.compute_authors_embeddings(expanded_df)
+            assert data['author'].x.shape[0] == max(data['book', 'by', 'author'].edge_index[1] + 1)
 
-        int_array = self.encode_string_array(ratings_book_merged['language_code'])
-        data['book', 'written_in', 'language'].edge_index = self.build_edge_index(ratings_book_merged['mapped_book_id'].values, int_array)
-        data['language'].x = torch.nn.functional.one_hot(torch.tensor(np.unique(int_array)), num_classes=len(np.unique(int_array)))
+            int_array = self.encode_string_array(ratings_book_merged['language_code'])
+            data['book', 'written_in', 'language'].edge_index = self.build_edge_index(ratings_book_merged['mapped_book_id'].values, int_array)
+            data['language'].x = torch.nn.functional.one_hot(torch.tensor(np.unique(int_array)), num_classes=len(np.unique(int_array)))
 
         # We also need to make sure to add the reverse edges from books to users
         # in order to let a GNN be able to pass messages in both directions.
@@ -226,9 +228,11 @@ class LoadData:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process and save hetero graph data.')
     parser.add_argument('--save_dir', type=str, help='Directory where the data will be saved')
+    parser.add_argument('--add_extra_data', action='store_true', help='Add extra data to the graph (authors, languages, etc.)')
 
     args = parser.parse_args()
     save_dir = args.save_dir
+    os.makedirs(save_dir, exist_ok=True)
 
     book_path = 'data/books.csv'
     ratings_path = 'data/ratings.csv'
@@ -237,7 +241,8 @@ if __name__ == "__main__":
     loader = LoadData(book_path, ratings_path, device)
     books_features = loader.compute_books_embeddings(loader.df_books, include_authors=False)
     users_features = loader.compute_user_embeddings(loader.df_ratings)
-    data = loader.create_hetero_graph(books_features, users_features)
+    print('adding extra data:', args.add_extra_data)    
+    data = loader.create_hetero_graph(books_features, users_features, args.add_extra_data)
 
     print(data)
     train_data, val_data, test_data = loader.split_hetero(data) 
