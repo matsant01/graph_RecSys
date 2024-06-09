@@ -34,7 +34,7 @@ def load_model(model_folder, full_data, config, evaluate_last=False):
                     use_embedding_layers=config['use_embedding_layers'])
 
     model_folder = os.path.join(model_folder, 'model.pt' if evaluate_last else 'best_model.pt')
-    model.load_state_dict(torch.load(model_folder))
+    model.load_state_dict(torch.load(model_folder, map_location=torch.device("cuda:0")))
     model.eval()
     return model
 

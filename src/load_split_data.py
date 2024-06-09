@@ -15,14 +15,16 @@ import os
 
 
 # make result reproducible
-seed_everything(42)  
-random.seed(42)  
+SEED = 42
 
 
 class LoadData:
     def __init__(self, book_path, ratings_path, device, user_to_sample=None):
         self.df_books = pd.read_csv(book_path)[['book_id', 'title', 'authors', 'language_code']]   
         self.df_ratings = pd.read_csv(ratings_path)
+        
+        seed_everything(42)  
+        random.seed(42)  
 
         # sample a subset of users and all their ratings
         if user_to_sample:
@@ -193,8 +195,11 @@ class LoadData:
     
     def split_hetero(self, data):
         ## designed for transductive learning
+        seed_everything(42)  
+        random.seed(42) 
+
         tfs = RandomLinkSplit(is_undirected=True, 
-                            num_val=0.05,
+                            num_val=0.1,
                             num_test=0.1,
                             neg_sampling_ratio=0.0,
                             add_negative_train_samples=False,
