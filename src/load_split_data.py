@@ -224,7 +224,6 @@ class LoadData:
 
 
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process and save hetero graph data.')
     parser.add_argument('--save_dir', type=str, help='Directory where the data will be saved')
