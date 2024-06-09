@@ -4,3 +4,10 @@ data/splitted_data/train.csv filter=lfs diff=lfs merge=lfs -text
 data/splitted_data/train_hetero.pt filter=lfs diff=lfs merge=lfs -text
 data/splitted_data/val.csv filter=lfs diff=lfs merge=lfs -text
 data/splitted_data/val_hetero.pt filter=lfs diff=lfs merge=lfs -text
+data/splitted_knowledge_graph/train.csv filter=lfs diff=lfs merge=lfs -text
+data/splitted_knowledge_graph/train_hetero.pt filter=lfs diff=lfs merge=lfs -text
+data/splitted_knowledge_graph/val.csv filter=lfs diff=lfs merge=lfs -text
+data/splitted_knowledge_graph/val_hetero.pt filter=lfs diff=lfs merge=lfs -text
+data/splitted_knowledge_graph/data_hetero.pt filter=lfs diff=lfs merge=lfs -text
+data/splitted_knowledge_graph/test.csv filter=lfs diff=lfs merge=lfs -text
+data/splitted_knowledge_graph/test_hetero.pt filter=lfs diff=lfs merge=lfs -text

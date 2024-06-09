@@ -10,6 +10,8 @@ from torch_geometric.data import HeteroData
 from sentence_transformers import SentenceTransformer
 from torch_geometric.transforms import RandomLinkSplit
 import numpy as np
+import argparse
+
 
 # make result reproducible
 seed_everything(42)  
@@ -18,7 +20,7 @@ random.seed(42)
 
 class LoadData:
     def __init__(self, book_path, ratings_path, device, user_to_sample=None):
-        self.df_books = pd.read_csv(book_path)[['book_id', 'title', 'authors']]   
+        self.df_books = pd.read_csv(book_path)[['book_id', 'title', 'authors', 'language_code']]   
         self.df_ratings = pd.read_csv(ratings_path)
 
         # sample a subset of users and all their ratings
@@ -104,31 +106,49 @@ class LoadData:
         ratings_book_merged = ratings_book_merged.merge(unique_book_id, on='book_id')
 
         return ratings_book_merged
+    
+    def encode_string_array(self, array):
+        unique_strings = array.unique()
+        string_to_int = {string: i for i, string in enumerate(unique_strings)}
+        int_array = np.vectorize(string_to_int.get)(array)
+        return int_array
+
+    def build_edge_index(self, column1, column2):
+
+        edge_index = torch.stack([
+            torch.tensor(column1), 
+            torch.tensor(column2)]
+            , dim=0)
+        return edge_index
 
 
     def create_hetero_graph(self, books_features, users_features): 
+
         ratings_book_merged = pd.merge(self.df_ratings, self.df_books, on='book_id')
 
         # user and book ids aren't continguos, we need to map them to a contiguous range
         ratings_book_merged = self.map_user_book_ids(ratings_book_merged)
 
-        # With this, we are ready to create the edge_index representation in COO format
-        # following the PyTorch Geometric semantics:
-        edge_index = torch.stack([
-            torch.tensor(ratings_book_merged['mapped_user_id'].values), 
-            torch.tensor(ratings_book_merged['mapped_book_id'].values)]
-            , dim=0)
-    
         data = HeteroData()
-        data['user'].x = torch.tensor(users_features,).detach().float() # (num_users, num_users_features)
-        data['book'].x = books_features.clone().detach().float() # (num_books, num_books_features)
+        # data['user'].x = ratings_book_merged['mapped_user_id'].unique()  # [num_users]
+        # data['book'].x = books_features.clone().detach().float() # (num_books, num_books_features)
+        data['user'].x = ratings_book_merged['mapped_user_id'].unique()  # [num_users]
+        data['book'].x = ratings_book_merged['mapped_book_id'].unique()  # [num_books]
 
-        # Add the rating edges:
-        data['user', 'rates', 'book'].edge_index = edge_index  # (2, num_ratings)
-
-        # # Add the rating labels:
+        data['user', 'rates', 'book'].edge_index = self.build_edge_index(ratings_book_merged['mapped_user_id'], ratings_book_merged['mapped_book_id'])
         rating = torch.from_numpy(ratings_book_merged['rating'].values).float()
         data['user', 'rates', 'book'].edge_label = rating  # [num_ratings]
+
+        # Split the 'authors' column into lists
+        ratings_book_merged['single_authors'] = ratings_book_merged['authors'].str.split(', ').copy()
+        expanded_df = ratings_book_merged.explode('single_authors', ignore_index=True)
+        int_array = self.encode_string_array(expanded_df['single_authors'])
+        data['book', 'by', 'author'].edge_index = self.build_edge_index(expanded_df['mapped_book_id'].values, int_array)
+        data['author'].x = torch.tensor(np.unique(int_array))
+
+        int_array = self.encode_string_array(ratings_book_merged['language_code'])
+        data['book', 'written_in', 'language'].edge_index = self.build_edge_index(ratings_book_merged['mapped_book_id'].values, int_array)
+        data['language'].x = torch.tensor(np.unique(int_array))
 
         # We also need to make sure to add the reverse edges from books to users
         # in order to let a GNN be able to pass messages in both directions.
@@ -177,26 +197,37 @@ class LoadData:
 
 
 
+
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Process and save hetero graph data.')
+    parser.add_argument('--save_dir', type=str, help='Directory where the data will be saved')
+
+    args = parser.parse_args()
+    save_dir = args.save_dir
+
     book_path = 'data/books.csv'
     ratings_path = 'data/ratings.csv'
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    loader = LoadData(book_path, ratings_path, device, user_to_sample=2000)
+    loader = LoadData(book_path, ratings_path, device)
     books_features = loader.compute_books_embeddings(loader.df_books)
     users_features = loader.compute_user_embeddings(loader.df_ratings)
     data = loader.create_hetero_graph(books_features, users_features)
 
+    print(data)
     train_data, val_data, test_data = loader.split_hetero(data) 
+    print(train_data)
+    print(val_data)
+    print(test_data)
 
     # saving both as torch and csv
-    loader.save_hetero(data, 'data/splitted_data/data_hetero.pt')
-    loader.save_hetero(train_data, 'data/splitted_data/train_hetero.pt')
-    loader.save_hetero(val_data, 'data/splitted_data/val_hetero.pt')
-    loader.save_hetero(test_data, 'data/splitted_data/test_hetero.pt')
-    loader.convert_hetero_to_csv_save(train_data, 'data/splitted_data/train.csv')
-    loader.convert_hetero_to_csv_save(val_data, 'data/splitted_data/val.csv')
-    loader.convert_hetero_to_csv_save(test_data, 'data/splitted_data/test.csv')
+    loader.save_hetero(data, f'{save_dir}/data_hetero.pt')
+    loader.save_hetero(train_data, f'{save_dir}/train_hetero.pt')
+    loader.save_hetero(val_data, f'{save_dir}/val_hetero.pt')
+    loader.save_hetero(test_data, f'{save_dir}/test_hetero.pt')
+    loader.convert_hetero_to_csv_save(train_data, f'{save_dir}/train.csv')
+    loader.convert_hetero_to_csv_save(val_data, f'{save_dir}/val.csv')
+    loader.convert_hetero_to_csv_save(test_data, f'{save_dir}/test.csv')
 
 
 

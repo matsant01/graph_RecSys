@@ -481,3 +481,4 @@ class GNN(torch.nn.Module):
             )
 
         self.train()
+    
