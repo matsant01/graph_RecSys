@@ -28,6 +28,8 @@ python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
+If any problem arises during the installation or later, we recommend following the precise instructions on PyTorch and PyTorch Geometric websites as the installation of these packages might depend on system configuration.
+
 ### Scripts usage 
 Now you can run all the code by using the scripts provided in the `scripts/` folder. By running any python script with the `--help` flag you can see the available options.
 
