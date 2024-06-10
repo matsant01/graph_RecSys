@@ -13,7 +13,7 @@ class MatrixFactorization:
         learning_rate: float = 0.01,
         lambda_reg: float = 0.01,
         log_every: int = 100,
-        output_dir: str = "./outut",
+        output_dir: str = "./output",
     ):
         """
         num_factors: number of latent variables
