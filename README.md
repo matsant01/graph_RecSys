@@ -20,15 +20,15 @@ The repository is structured as follows:
 - `scripts/`: contains the scripts used to run the experiments.
 - `report/`: contains the final report of the project.
 
-### Running the code
-#### Getting started
+## Running the code
+### Getting started
 First of all you need to install the required packages. We recommend to create a virtual environment an install the packages there. You can do so by running the following commands:
 ```shell
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
-#### Scripts usage 
+### Scripts usage 
 Now you can run all the code by using the scripts provided in the `scripts/` folder. By running any python script with the `--help` flag you can see the available options.
 
 To create and store both the Heterogeneous Graph and the training-validation-test splits you can use:
@@ -66,15 +66,6 @@ python scripts/evaluator.py \
 In this [`example.sh`](scripts/shell/example.sh) you can find a script that runs the whole pipeline with some default parameters and different models.
 
 ## Results
-<style type="text/css">
-.tg  {border-collapse:collapse;border-color:#ccc;border-spacing:0;}
-.tg td{background-color:#fff;border-color:#ccc;border-style:solid;border-width:0px;color:#333;
-  font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;word-break:normal;}
-.tg th{background-color:#f0f0f0;border-color:#ccc;border-style:solid;border-width:0px;color:#333;
-  font-family:Arial, sans-serif;font-size:14px;font-weight:normal;overflow:hidden;padding:10px 5px;word-break:normal;}
-.tg .tg-c3ow{border-color:inherit;text-align:center;vertical-align:top}
-.tg .tg-abip{background-color:#f9f9f9;border-color:inherit;text-align:center;vertical-align:top}
-</style>
 <table class="tg"><thead>
   <tr>
     <th class="tg-c3ow">Model</th>
