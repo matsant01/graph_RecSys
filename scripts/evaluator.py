@@ -51,7 +51,7 @@ def evaluate_model_in_folder(model_folder, test_data, full_data, evaluate_last=F
         print(f"{key}: {value}")
     print("\n\n")
     
-    with open(os.path.join(model_folder, 'metrics.json'), 'w') as f:
+    with open(os.path.join(model_folder, 'metrics_last.json' if evaluate_last else 'metrics_best.json'), 'w') as f:
         json.dump(metrics, f, indent=4)
     
 

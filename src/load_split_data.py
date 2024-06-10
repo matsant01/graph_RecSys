@@ -199,7 +199,7 @@ class LoadData:
         random.seed(42) 
 
         tfs = RandomLinkSplit(is_undirected=True, 
-                            num_val=0.1,
+                            num_val=0.075,
                             num_test=0.1,
                             neg_sampling_ratio=0.0,
                             add_negative_train_samples=False,
