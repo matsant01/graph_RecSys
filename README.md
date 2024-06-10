@@ -6,7 +6,7 @@ Final Project for Network Machine Lerarning course at EPFL (EE-452)
 
 ---
 
-### Repository structure
+## Repository structure
 The repository is structured as follows:
 - `data/`: contains the original dataset used for the project and is used to store the processed data.
 - `notebooks/`: contains the Jupyter notebooks used for the project:
@@ -20,7 +20,7 @@ The repository is structured as follows:
 - `scripts/`: contains the scripts used to run the experiments.
 - `report/`: contains the final report of the project.
 
-## Running the code
+# Running the code
 ### Getting started
 First of all you need to install the required packages. We recommend to create a virtual environment an install the packages there. You can do so by running the following commands:
 ```shell
